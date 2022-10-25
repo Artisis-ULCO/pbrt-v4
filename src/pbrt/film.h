@@ -213,6 +213,12 @@ class FilmBase {
         return SampledWavelengths::SampleVisible(u);
     }
 
+    // TODO [MIS]: return multiples \alpha_i
+    Float GetMISAlpha(Point2i p) const;
+
+    // TODO [MIS]: first version with 2 sampling method
+    void UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf);
+
     PBRT_CPU_GPU
     Bounds2f SampleBounds() const;
 
@@ -273,6 +279,23 @@ class RGBFilm : public FilmBase {
         return rgb;
     }
 
+    // TODO [MIS]: return multiples \alpha_i
+    PBRT_CPU_GPU
+    Float GetMISAlpha(Point2i p) const {
+        const Pixel &pixel = pixels[p];
+        return pixel.pdfAlpha;
+    }
+
+    // TODO [MIS]: first version with 2 sampling method
+    PBRT_CPU_GPU
+    void UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf) {
+        Pixel &pixel = pixels[p];
+        pixel.pdfSum[0] += fpdf;
+        pixel.pdfSum[1] += gpdf;
+
+        // TODO [MIS]: update alpha_k respectively to equations 30-31-32
+    }
+
     RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
             Float maxComponentValue = Infinity, bool writeFP16 = true,
             Allocator alloc = {});
@@ -300,7 +323,17 @@ class RGBFilm : public FilmBase {
   private:
     // RGBFilm::Pixel Definition
     struct Pixel {
-        Pixel() = default;
+        static const int nPDFs = 2;
+
+        Pixel() {
+            for (int i = 0; i < Pixel::nPDFs; i++) {
+                pdfSum[i] = 0.;
+            }
+
+        };
+        // By default static number of PDFs
+        double pdfAlpha = 0.5;
+        double pdfSum[nPDFs];
         double rgbSum[3] = {0., 0., 0.};
         double weightSum = 0.;
         AtomicDouble rgbSplat[3];
@@ -363,6 +396,14 @@ class GBufferFilm : public FilmBase {
 
         return rgb;
     }
+
+    PBRT_CPU_GPU
+    Float GetMISAlpha(Point2i p) const {
+        return 0.5;
+    }
+
+    PBRT_CPU_GPU
+    void UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf) {}
 
     void WriteImage(ImageMetadata metadata, Float splatScale = 1);
     Image GetImage(ImageMetadata *metadata, Float splatScale = 1);
@@ -456,6 +497,14 @@ class SpectralFilm : public FilmBase {
 
     PBRT_CPU_GPU
     RGB GetPixelRGB(Point2i p, Float splatScale = 1) const;
+
+    PBRT_CPU_GPU
+    Float GetMISAlpha(Point2i p) const {
+        return 0.5;
+    }
+
+    PBRT_CPU_GPU
+    void UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf) {}
 
     SpectralFilm(FilmBaseParameters p, Float lambdaMin, Float lambdaMax, int nBuckets,
                  const RGBColorSpace *colorSpace, Float maxComponentValue = Infinity,
@@ -579,6 +628,18 @@ PBRT_CPU_GPU
 inline RGB Film::ToOutputRGB(SampledSpectrum L, const SampledWavelengths &lambda) const {
     auto out = [&](auto ptr) { return ptr->ToOutputRGB(L, lambda); };
     return Dispatch(out);
+}
+
+PBRT_CPU_GPU
+inline Float Film::GetMISAlpha(Point2i p) const {
+    auto get = [&](auto ptr) { return ptr->GetMISAlpha(p); };
+    return Dispatch(get);
+}
+
+PBRT_CPU_GPU
+inline void Film::UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf) {
+    auto upd = [&](auto ptr) { return ptr->UpdateMISAlpha(p, fpdf, gpdf); };
+    return Dispatch(upd);
 }
 
 PBRT_CPU_GPU

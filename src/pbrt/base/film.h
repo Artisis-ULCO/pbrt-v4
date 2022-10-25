@@ -10,6 +10,7 @@
 #include <pbrt/base/filter.h>
 #include <pbrt/util/pstd.h>
 #include <pbrt/util/taggedptr.h>
+#include <pbrt/options.h>
 
 #include <string>
 
@@ -53,6 +54,14 @@ class Film : public TaggedPointer<RGBFilm, GBufferFilm, SpectralFilm> {
 
     PBRT_CPU_GPU
     RGB GetPixelRGB(Point2i p, Float splatScale = 1) const;
+
+    // TODO [MIS]: return multiples \alpha_i
+    PBRT_CPU_GPU
+    Float GetMISAlpha(Point2i p) const;
+
+    // TODO [MIS]: first version with 2 sampling method
+    PBRT_CPU_GPU
+    void UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf);
 
     PBRT_CPU_GPU inline Filter GetFilter() const;
     PBRT_CPU_GPU inline const PixelSensor *GetPixelSensor() const;

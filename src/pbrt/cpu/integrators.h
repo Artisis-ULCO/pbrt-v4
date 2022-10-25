@@ -106,7 +106,7 @@ class RayIntegrator : public ImageTileIntegrator {
     void EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler sampler,
                              ScratchBuffer &scratchBuffer) final;
 
-    virtual SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda,
+    virtual SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                Sampler sampler, ScratchBuffer &scratchBuffer,
                                VisibleSurface *visibleSurface) const = 0;
 };
@@ -125,7 +125,7 @@ class RandomWalkIntegrator : public RayIntegrator {
 
     std::string ToString() const;
 
-    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const {
         return LiRandomWalk(ray, lambda, sampler, scratchBuffer, 0);
@@ -186,7 +186,7 @@ class SimplePathIntegrator : public RayIntegrator {
     SimplePathIntegrator(int maxDepth, bool sampleLights, bool sampleBSDF, Camera camera,
                          Sampler sampler, Primitive aggregate, std::vector<Light> lights);
 
-    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -212,7 +212,7 @@ class PathIntegrator : public RayIntegrator {
                    const std::string &lightSampleStrategy = "bvh",
                    bool regularize = false);
 
-    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -242,7 +242,7 @@ class SimpleVolPathIntegrator : public RayIntegrator {
     SimpleVolPathIntegrator(int maxDepth, Camera camera, Sampler sampler,
                             Primitive aggregate, std::vector<Light> lights);
 
-    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -270,7 +270,7 @@ class VolPathIntegrator : public RayIntegrator {
           lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
           regularize(regularize) {}
 
-    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -299,7 +299,7 @@ class AOIntegrator : public RayIntegrator {
     AOIntegrator(bool cosSample, Float maxDist, Camera camera, Sampler sampler,
                  Primitive aggregate, std::vector<Light> lights, Spectrum illuminant);
 
-    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -355,7 +355,7 @@ class BDPTIntegrator : public RayIntegrator {
           visualizeStrategies(visualizeStrategies),
           visualizeWeights(visualizeWeights) {}
 
-    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
