@@ -86,7 +86,7 @@ class ImageTileIntegrator : public Integrator {
 
     void Render();
 
-    virtual void EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler sampler,
+    virtual void EvaluatePixelSample(const Point2i pPixel, int sampleIndex, Sampler sampler,
                                      ScratchBuffer &scratchBuffer) = 0;
 
   protected:
@@ -103,10 +103,10 @@ class RayIntegrator : public ImageTileIntegrator {
                   std::vector<Light> lights)
         : ImageTileIntegrator(camera, sampler, aggregate, lights) {}
 
-    void EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler sampler,
+    void EvaluatePixelSample(const Point2i pPixel, int sampleIndex, Sampler sampler,
                              ScratchBuffer &scratchBuffer) final;
 
-    virtual SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
+    virtual SampledSpectrum Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                Sampler sampler, ScratchBuffer &scratchBuffer,
                                VisibleSurface *visibleSurface) const = 0;
 };
@@ -125,7 +125,7 @@ class RandomWalkIntegrator : public RayIntegrator {
 
     std::string ToString() const;
 
-    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const {
         return LiRandomWalk(ray, lambda, sampler, scratchBuffer, 0);
@@ -186,7 +186,7 @@ class SimplePathIntegrator : public RayIntegrator {
     SimplePathIntegrator(int maxDepth, bool sampleLights, bool sampleBSDF, Camera camera,
                          Sampler sampler, Primitive aggregate, std::vector<Light> lights);
 
-    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -212,7 +212,7 @@ class PathIntegrator : public RayIntegrator {
                    const std::string &lightSampleStrategy = "bvh",
                    bool regularize = false);
 
-    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -226,7 +226,7 @@ class PathIntegrator : public RayIntegrator {
 
   private:
     // PathIntegrator Private Methods
-    SampledSpectrum SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
+    SampledSpectrum SampleLd(const Point2i pPixel, const SurfaceInteraction &intr, const BSDF *bsdf,
                              SampledWavelengths &lambda, Sampler sampler) const;
 
     // PathIntegrator Private Members
@@ -242,7 +242,7 @@ class SimpleVolPathIntegrator : public RayIntegrator {
     SimpleVolPathIntegrator(int maxDepth, Camera camera, Sampler sampler,
                             Primitive aggregate, std::vector<Light> lights);
 
-    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -270,7 +270,7 @@ class VolPathIntegrator : public RayIntegrator {
           lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
           regularize(regularize) {}
 
-    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -282,7 +282,7 @@ class VolPathIntegrator : public RayIntegrator {
 
   private:
     // VolPathIntegrator Private Methods
-    SampledSpectrum SampleLd(const Interaction &intr, const BSDF *bsdf,
+    SampledSpectrum SampleLd(const Point2i pPixel, const Interaction &intr, const BSDF *bsdf,
                              SampledWavelengths &lambda, Sampler sampler,
                              SampledSpectrum beta, SampledSpectrum inv_w_u) const;
 
@@ -299,7 +299,7 @@ class AOIntegrator : public RayIntegrator {
     AOIntegrator(bool cosSample, Float maxDist, Camera camera, Sampler sampler,
                  Primitive aggregate, std::vector<Light> lights, Spectrum illuminant);
 
-    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -325,7 +325,7 @@ class LightPathIntegrator : public ImageTileIntegrator {
     LightPathIntegrator(int maxDepth, Camera camera, Sampler sampler, Primitive aggregate,
                         std::vector<Light> lights);
 
-    void EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler sampler,
+    void EvaluatePixelSample(const Point2i pPixel, int sampleIndex, Sampler sampler,
                              ScratchBuffer &scratchBuffer);
 
     static std::unique_ptr<LightPathIntegrator> Create(
@@ -355,7 +355,7 @@ class BDPTIntegrator : public RayIntegrator {
           visualizeStrategies(visualizeStrategies),
           visualizeWeights(visualizeWeights) {}
 
-    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+    SampledSpectrum Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
@@ -463,7 +463,7 @@ class SPPMIntegrator : public Integrator {
 
   private:
     // SPPMIntegrator Private Methods
-    SampledSpectrum SampleLd(const SurfaceInteraction &intr, const BSDF &bsdf,
+    SampledSpectrum SampleLd(const Point2i pPixel, const SurfaceInteraction &intr, const BSDF &bsdf,
                              SampledWavelengths &lambda, Sampler sampler,
                              LightSampler lightSampler) const;
 

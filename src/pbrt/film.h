@@ -29,6 +29,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <iostream>
 
 namespace pbrt {
 
@@ -213,11 +214,16 @@ class FilmBase {
         return SampledWavelengths::SampleVisible(u);
     }
 
-    // TODO [MIS]: return multiples \alpha_i
-    Float GetMISAlpha(Point2i p) const;
+    // TODO [MIS]: returns \alpha_k
+    PBRT_CPU_GPU
+    Float GetMISAlpha(const Point2i p) const;
 
     // TODO [MIS]: first version with 2 sampling method
-    void UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf);
+    PBRT_CPU_GPU
+    void UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf);
+
+    PBRT_CPU_GPU
+    void ComputeUpdatedAlpha(Point2i p);
 
     PBRT_CPU_GPU
     Bounds2f SampleBounds() const;
@@ -279,21 +285,47 @@ class RGBFilm : public FilmBase {
         return rgb;
     }
 
-    // TODO [MIS]: return multiples \alpha_i
+    // [MIS Divergence]: returns \alpha_k
     PBRT_CPU_GPU
-    Float GetMISAlpha(Point2i p) const {
-        const Pixel &pixel = pixels[p];
-        return pixel.pdfAlpha;
+    Float GetMISAlpha(const Point2i p) const {
+        return pixels[p].pdfAlpha;
     }
 
-    // TODO [MIS]: first version with 2 sampling method
+    // [MIS Divergence]: first version with 2 sampling method
     PBRT_CPU_GPU
-    void UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf) {
+    void UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf) {
         Pixel &pixel = pixels[p];
+
         pixel.pdfSum[0] += fpdf;
         pixel.pdfSum[1] += gpdf;
 
+        // add contribution
+        // TODO: add at the end of L computation with another function?
+        RGB rgb = sensor->ToSensorRGB(L, lambda);
+        pixel.rgbSum[0] = pixel.rgbSum[0] + rgb[0];
+        pixel.rgbSum[1] = pixel.rgbSum[1] + rgb[1];
+        pixel.rgbSum[2] = pixel.rgbSum[2] + rgb[2];
+    }
+
+    PBRT_CPU_GPU
+    void ComputeUpdatedAlpha(Point2i p) {
+        
+        Pixel &pixel = pixels[p];
+
+        std::cout << "BSDF: " << pixel.pdfSum[0] << std::endl;
+        std::cout << "Light: " << pixel.pdfSum[1] << std::endl;
+
+        pixel.nSamples += 1; // increase number of samples
+
         // TODO [MIS]: update alpha_k respectively to equations 30-31-32
+        // TODO [MIS]: need some data storage (squared difference of PDFs)
+        // pixel.rgbSum[0] = 0.;
+        // pixel.rgbSum[1] = 0.;
+        // pixel.rgbSum[2] = 0.;
+
+
+        pixel.pdfSum[0] = 0;
+        pixel.pdfSum[1] = 0;
     }
 
     RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
@@ -336,6 +368,7 @@ class RGBFilm : public FilmBase {
         double pdfSum[nPDFs];
         double rgbSum[3] = {0., 0., 0.};
         double weightSum = 0.;
+        int nSamples = 0;
         AtomicDouble rgbSplat[3];
     };
 
@@ -398,12 +431,16 @@ class GBufferFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
-    Float GetMISAlpha(Point2i p) const {
+    Float GetMISAlpha(const Point2i p) const {
         return 0.5;
     }
 
     PBRT_CPU_GPU
-    void UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf) {}
+    void UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf) {}
+
+    PBRT_CPU_GPU
+    void ComputeUpdatedAlpha(Point2i p) {}
+
 
     void WriteImage(ImageMetadata metadata, Float splatScale = 1);
     Image GetImage(ImageMetadata *metadata, Float splatScale = 1);
@@ -499,12 +536,15 @@ class SpectralFilm : public FilmBase {
     RGB GetPixelRGB(Point2i p, Float splatScale = 1) const;
 
     PBRT_CPU_GPU
-    Float GetMISAlpha(Point2i p) const {
+    Float GetMISAlpha(const Point2i p) const {
         return 0.5;
     }
 
     PBRT_CPU_GPU
-    void UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf) {}
+    void UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf) {}
+
+    PBRT_CPU_GPU
+    void ComputeUpdatedAlpha(Point2i p) {}
 
     SpectralFilm(FilmBaseParameters p, Float lambdaMin, Float lambdaMax, int nBuckets,
                  const RGBColorSpace *colorSpace, Float maxComponentValue = Infinity,
@@ -631,14 +671,20 @@ inline RGB Film::ToOutputRGB(SampledSpectrum L, const SampledWavelengths &lambda
 }
 
 PBRT_CPU_GPU
-inline Float Film::GetMISAlpha(Point2i p) const {
+inline Float Film::GetMISAlpha(const Point2i p) const {
     auto get = [&](auto ptr) { return ptr->GetMISAlpha(p); };
     return Dispatch(get);
 }
 
 PBRT_CPU_GPU
-inline void Film::UpdateMISAlpha(Point2i p, Float fpdf, Float gpdf) {
-    auto upd = [&](auto ptr) { return ptr->UpdateMISAlpha(p, fpdf, gpdf); };
+inline void Film::UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf) {
+    auto upd = [&](auto ptr) { return ptr->UpdatePdfMIS(p, L, lambda, fpdf, gpdf); };
+    return Dispatch(upd);
+}
+
+PBRT_CPU_GPU
+inline void Film::ComputeUpdatedAlpha(const Point2i p) {
+    auto upd = [&](auto ptr) { return ptr->ComputeUpdatedAlpha(p); };
     return Dispatch(upd);
 }
 
