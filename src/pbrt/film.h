@@ -296,9 +296,9 @@ class RGBFilm : public FilmBase {
         
         // [MIS] 5 samples for first method / 5 samples for second method
         if (pixel.nsamples < 5) {
-            return 1.;
+            return 0.99;
         } else if (pixel.nsamples < 10) {
-            return 0.;
+            return 0.01;
         }
 
         // after we always get MIS alpha
@@ -344,20 +344,49 @@ class RGBFilm : public FilmBase {
         
         Pixel &pixel = pixels[p];
 
+        if (pixel.nsamples < 10)
+            return;
+
+        std::cout << "Data for pixel " << p << " at samples " << pixel.nsamples << std::endl;
         Float luminance = 0.2126 * pixel.rgbSum[0] + 0.7152 * pixel.rgbSum[1] + 0.0722 * pixel.rgbSum[2];
+        std::cout << " -- Luminance: " << luminance << std::endl;
+        std::cout << " -- Current alpha: " << pixel.alphaMIS << std::endl;
 
         // [MIS]: update xi and xi' with respect to equations 30-31
         Float probsSum = pixel.alphaMIS * pixel.pdfTotalSum[0] 
                         + (1 - pixel.alphaMIS) * pixel.pdfTotalSum[1];
 
-        Float xiAlpha = ((luminance / std::pow(probsSum, pixel.gammaTsallis + 1.))
+        if (probsSum <= 0)
+            probsSum += std::numeric_limits<Float>::epsilon();
+
+        std::cout << " -- Probs sum: " << probsSum << std::endl;
+        std::cout << " -- Probs diff sum: " << pixel.probsDiffSum << std::endl;
+        std::cout << " -- Probs diff^2 sum: " << pixel.probsSquaredDiffSum << std::endl;
+
+        Float xiAlpha = (((luminance * pixel.gammaTsallis) / std::pow(probsSum, pixel.gammaTsallis + 1.))
                         * pixel.probsDiffSum) / pixel.nsamples;
 
-        Float xiPrimeAlpha = ((luminance / std::pow(probsSum, pixel.gammaTsallis + 2.))
+        Float xiPrimeAlpha = (((luminance * pixel.gammaTsallis) / std::pow(probsSum, pixel.gammaTsallis + 2.))
                         * pixel.probsSquaredDiffSum) * (-pixel.gammaTsallis / pixel.nsamples);
+
+        if (xiPrimeAlpha <= 0)
+            xiPrimeAlpha += std::numeric_limits<Float>::epsilon();
+
+
+        std::cout << " -- xiAlpha: " << xiAlpha << std::endl;
+        std::cout << " -- xiPrimeAlpha: " << xiAlpha << std::endl;
+        std::cout << " -- new Alpha MIS: " << pixel.alphaMIS - (xiAlpha / xiPrimeAlpha) << std::endl;
+
+        std::cout << "-------------------------" << std::endl;
+        return;
 
         // [MIS]: update xi and xi' with respect to equation 32
         pixel.alphaMIS = pixel.alphaMIS - (xiAlpha / xiPrimeAlpha);
+
+        if (pixel.alphaMIS < 0) 
+            pixel.alphaMIS = std::numeric_limits<Float>::epsilon();
+
+        // std::cout << xiAlpha << " vs " << xiPrimeAlpha << std::endl;
 
         // reset for next sample (generated path)
         pixel.probsSum[0] = 0;

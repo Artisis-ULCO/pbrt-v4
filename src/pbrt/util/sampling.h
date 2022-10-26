@@ -66,7 +66,7 @@ Float SampleCatmullRom2D(pstd::span<const Float> nodes1, pstd::span<const Float>
 
 // Sampling Inline Functions
 PBRT_CPU_GPU inline Float BalanceHeuristicDivergence(Float alpha, Float fPdf, Float gPdf) {
-    // TODO: check 1 over sum? (Mateu formula)
+    // TODO MIS: check 1 over sum? (Mateu formula)
     return (alpha * fPdf) / (alpha * fPdf + (1 - alpha) * gPdf);
 }
 

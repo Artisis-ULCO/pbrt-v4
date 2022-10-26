@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <fstream>
 
 namespace pbrt {
 
@@ -519,6 +520,27 @@ void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale) {
     Image image = GetImage(&metadata, splatScale);
     LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
     image.Write(filename, metadata);
+
+    // [MIS Divergence]: write alpha map
+    std::string::size_type ext = filename.find(".");
+    std::string prefix = filename.substr(0, ext);
+    std::string mapFilename = prefix + ".map";
+
+    std::ofstream file;
+    file.open(mapFilename);
+
+
+    for (int i = 0; i < fullResolution.y; i++) {
+        for (int j = 0; j < fullResolution.x; j++) {
+
+            Point2i p = Point2i(i, j);
+            file << pixels[p].alphaMIS << ";";
+        }
+
+        file << std::endl;
+    }
+
+    file.close();
 }
 
 Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {

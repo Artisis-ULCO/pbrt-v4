@@ -657,12 +657,15 @@ SampledSpectrum PathIntegrator::Li(const Point2i pPixel, RayDifferential ray, Sa
                     L += beta * Le;
                 else {
                     // Compute MIS weight for infinite light
-                    Float lightPDF = lightSampler.PMF(prevIntrCtx, light) *
-                                     light.PDF_Li(prevIntrCtx, ray.d, true);
+                    Float lightProb = lightSampler.PMF(prevIntrCtx, light);
+                    Float lightPDF = lightProb * light.PDF_Li(prevIntrCtx, ray.d, true);
                     
                     // [MIS Divergence]
+                    // bsdfPDF seems to be probability? 
+                    // => https://www.pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/Sampling_Reflection_Functions
+                    // p(x) = cos(\theta) / \pi
                     Float w_b = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
-                    camera.GetFilm().UpdateProbsMIS(pPixel, bsdfPDF, lightPDF);
+                    camera.GetFilm().UpdateProbsMIS(pPixel, bsdfPDF, lightProb);
                     // std::cout << "Pixel:" << pPixel << " width depth: " << depth << " has [bsdfPDF: " << bsdfPDF << ", lightPDF: " << lightPDF<< "]" << std::endl;  
                     L += beta * w_b * Le;
                 }
@@ -678,14 +681,21 @@ SampledSpectrum PathIntegrator::Li(const Point2i pPixel, RayDifferential ray, Sa
             else {
                 // Compute MIS weight for area light
                 Light areaLight(si->intr.areaLight);
-                Float lightPDF = lightSampler.PMF(prevIntrCtx, areaLight) *
-                                 areaLight.PDF_Li(prevIntrCtx, ray.d, true);
+
+                // Probability mass function (PMF) gives you the probability 
+                // that a discrete random variable is exactly equal to some real value
+                Float lightProb = lightSampler.PMF(prevIntrCtx, areaLight);
+
+                // then use density
+                Float lightPDF = lightProb * areaLight.PDF_Li(prevIntrCtx, ray.d, true);
                 
                 // [MIS Divergence]
+                // bsdfPDF seems to be probability? 
+                // => https://www.pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/Sampling_Reflection_Functions
+                // p(x) = cos(\theta) / \pi
                 Float w_l = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
-                camera.GetFilm().UpdateProbsMIS(pPixel, bsdfPDF, lightPDF);
-                std::cout << "Pixel:" << pPixel << " width depth: " << depth << " has [bsdfPDF: " << bsdfPDF << ", lightPDF: " << lightPDF<< "]" << std::endl;  
-                    
+                camera.GetFilm().UpdateProbsMIS(pPixel, bsdfPDF, lightProb);
+                
                 L += beta * w_l * Le;
             }
         }
@@ -821,7 +831,6 @@ SampledSpectrum PathIntegrator::SampleLd(const Point2i pPixel, const SurfaceInte
     // Return light's contribution to reflected radiance
     Float p_l = sampledLight->p * ls->pdf;
     if (IsDeltaLight(light.Type())) {
-        // std::cout << "Pixel:" << pPixel << " Ld has [lightPDF: " << p_l << "]" << std::endl;
         return ls->L * f / p_l;
     }
     else {
@@ -831,6 +840,8 @@ SampledSpectrum PathIntegrator::SampleLd(const Point2i pPixel, const SurfaceInte
         // TODO MIS: Take care of inverse balance heuristic PDF params
         // Check expected prob for MIS updates
         Float w_l = BalanceHeuristicDivergence(1 - alphaMIS, p_l, p_b);
+
+        // TODO: direct lighting not taken into account?
         camera.GetFilm().UpdateProbsMIS(pPixel, p_b, sampledLight->p);
 
         return w_l * ls->L * f / p_l;
