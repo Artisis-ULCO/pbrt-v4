@@ -220,8 +220,11 @@ class FilmBase {
 
     // TODO [MIS]: first version with 2 sampling method
     PBRT_CPU_GPU
-    void UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf);
+    void UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf);
 
+    PBRT_CPU_GPU
+    void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth);
+     
     PBRT_CPU_GPU
     void ComputeUpdatedAlpha(Point2i p);
 
@@ -288,16 +291,23 @@ class RGBFilm : public FilmBase {
     // [MIS Divergence]: returns \alpha_k
     PBRT_CPU_GPU
     Float GetMISAlpha(const Point2i p) const {
-        return pixels[p].pdfAlpha;
+
+        const Pixel &pixel = pixels[p];
+        
+        // [MIS] 5 samples for first method / 5 samples for second method
+        if (pixel.nsamples < 5) {
+            return 1.;
+        } else if (pixel.nsamples < 10) {
+            return 0.;
+        }
+
+        // after we always get MIS alpha
+        return pixel.alphaMIS;
     }
 
-    // [MIS Divergence]: first version with 2 sampling method
     PBRT_CPU_GPU
-    void UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf) {
+    void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {
         Pixel &pixel = pixels[p];
-
-        pixel.pdfSum[0] += fpdf;
-        pixel.pdfSum[1] += gpdf;
 
         // add contribution
         // TODO: add at the end of L computation with another function?
@@ -305,6 +315,28 @@ class RGBFilm : public FilmBase {
         pixel.rgbSum[0] = pixel.rgbSum[0] + rgb[0];
         pixel.rgbSum[1] = pixel.rgbSum[1] + rgb[1];
         pixel.rgbSum[2] = pixel.rgbSum[2] + rgb[2];
+
+        pixel.nsamples += 1; // increase number of samples
+
+        // TODO: check if it's expected? Perhaps products of probs if not 0?
+        pixel.probsSum[0] /= depth;
+        pixel.probsSum[1] /= depth;
+
+        pixel.pdfTotalSum[0] += pixel.probsSum[0];
+        pixel.pdfTotalSum[1] += pixel.probsSum[1];
+
+        pixel.probsDiffSum += (pixel.probsSum[0] - pixel.probsSum[1]);
+        pixel.probsSquaredDiffSum += (pixel.probsSum[0] - pixel.probsSum[1]) 
+                                * (pixel.probsSum[0] - pixel.probsSum[1]);
+    }
+
+    // [MIS Divergence]: first version with 2 sampling method
+    PBRT_CPU_GPU
+    void UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf) {
+        Pixel &pixel = pixels[p];
+
+        pixel.probsSum[0] += fpdf;
+        pixel.probsSum[1] += gpdf;
     }
 
     PBRT_CPU_GPU
@@ -312,20 +344,24 @@ class RGBFilm : public FilmBase {
         
         Pixel &pixel = pixels[p];
 
-        std::cout << "BSDF: " << pixel.pdfSum[0] << std::endl;
-        std::cout << "Light: " << pixel.pdfSum[1] << std::endl;
+        Float luminance = 0.2126 * pixel.rgbSum[0] + 0.7152 * pixel.rgbSum[1] + 0.0722 * pixel.rgbSum[2];
 
-        pixel.nSamples += 1; // increase number of samples
+        // [MIS]: update xi and xi' with respect to equations 30-31
+        Float probsSum = pixel.alphaMIS * pixel.pdfTotalSum[0] 
+                        + (1 - pixel.alphaMIS) * pixel.pdfTotalSum[1];
 
-        // TODO [MIS]: update alpha_k respectively to equations 30-31-32
-        // TODO [MIS]: need some data storage (squared difference of PDFs)
-        // pixel.rgbSum[0] = 0.;
-        // pixel.rgbSum[1] = 0.;
-        // pixel.rgbSum[2] = 0.;
+        Float xiAlpha = ((luminance / std::pow(probsSum, pixel.gammaTsallis + 1.))
+                        * pixel.probsDiffSum) / pixel.nsamples;
 
+        Float xiPrimeAlpha = ((luminance / std::pow(probsSum, pixel.gammaTsallis + 2.))
+                        * pixel.probsSquaredDiffSum) * (-pixel.gammaTsallis / pixel.nsamples);
 
-        pixel.pdfSum[0] = 0;
-        pixel.pdfSum[1] = 0;
+        // [MIS]: update xi and xi' with respect to equation 32
+        pixel.alphaMIS = pixel.alphaMIS - (xiAlpha / xiPrimeAlpha);
+
+        // reset for next sample (generated path)
+        pixel.probsSum[0] = 0;
+        pixel.probsSum[1] = 0;
     }
 
     RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
@@ -359,16 +395,22 @@ class RGBFilm : public FilmBase {
 
         Pixel() {
             for (int i = 0; i < Pixel::nPDFs; i++) {
-                pdfSum[i] = 0.;
+                probsSum[i] = 0.;
+                pdfTotalSum[i] = 0;
             }
 
         };
         // By default static number of PDFs
-        double pdfAlpha = 0.5;
-        double pdfSum[nPDFs];
+        double alphaMIS = 0.5;
+        double gammaTsallis = 1.;
+        double probsSum[nPDFs];
+        double pdfTotalSum[nPDFs];
+        double probsDiffSum = 0.;
+        double probsSquaredDiffSum = 0.;
+
         double rgbSum[3] = {0., 0., 0.};
         double weightSum = 0.;
-        int nSamples = 0;
+        int nsamples = 0;
         AtomicDouble rgbSplat[3];
     };
 
@@ -436,7 +478,10 @@ class GBufferFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
-    void UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf) {}
+    void UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf) {}
+
+    PBRT_CPU_GPU
+    void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {}
 
     PBRT_CPU_GPU
     void ComputeUpdatedAlpha(Point2i p) {}
@@ -541,7 +586,11 @@ class SpectralFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
-    void UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf) {}
+    void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {}
+   
+
+    PBRT_CPU_GPU
+    void UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf) {}
 
     PBRT_CPU_GPU
     void ComputeUpdatedAlpha(Point2i p) {}
@@ -677,8 +726,14 @@ inline Float Film::GetMISAlpha(const Point2i p) const {
 }
 
 PBRT_CPU_GPU
-inline void Film::UpdatePdfMIS(const Point2i p, SampledSpectrum L, SampledWavelengths &lambda, Float fpdf, Float gpdf) {
-    auto upd = [&](auto ptr) { return ptr->UpdatePdfMIS(p, L, lambda, fpdf, gpdf); };
+inline void Film::UpdateSampleMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {
+    auto upd = [&](auto ptr) { return ptr->UpdateSampleMIS(p, L, lambda, depth); };
+    return Dispatch(upd);
+}
+
+PBRT_CPU_GPU
+inline void Film::UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf) {
+    auto upd = [&](auto ptr) { return ptr->UpdateProbsMIS(p, fpdf, gpdf); };
     return Dispatch(upd);
 }
 
