@@ -220,7 +220,7 @@ class FilmBase {
 
     // TODO [MIS]: first version with 2 sampling method
     PBRT_CPU_GPU
-    void UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf);
+    void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf);
 
     PBRT_CPU_GPU
     void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth);
@@ -295,9 +295,9 @@ class RGBFilm : public FilmBase {
         const Pixel &pixel = pixels[p];
         
         // [MIS] 5 samples for first method / 5 samples for second method
-        if (pixel.nsamples < 5) {
+        if (pixel.nsamples < (int)(Pixel::samplesBatch / 2)) {
             return 0.99;
-        } else if (pixel.nsamples < 10) {
+        } else if (pixel.nsamples < Pixel::samplesBatch) {
             return 0.01;
         }
 
@@ -309,34 +309,33 @@ class RGBFilm : public FilmBase {
     void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {
         Pixel &pixel = pixels[p];
 
-        // add contribution
-        // TODO: add at the end of L computation with another function?
-        RGB rgb = sensor->ToSensorRGB(L, lambda);
-        pixel.rgbSum[0] = pixel.rgbSum[0] + rgb[0];
-        pixel.rgbSum[1] = pixel.rgbSum[1] + rgb[1];
-        pixel.rgbSum[2] = pixel.rgbSum[2] + rgb[2];
-
-        pixel.nsamples += 1; // increase number of samples
-
-        // TODO: check if it's expected? Perhaps products of probs if not 0?
-        pixel.probsSum[0] /= depth;
-        pixel.probsSum[1] /= depth;
-
-        pixel.pdfTotalSum[0] += pixel.probsSum[0];
-        pixel.pdfTotalSum[1] += pixel.probsSum[1];
-
-        pixel.probsDiffSum += (pixel.probsSum[0] - pixel.probsSum[1]);
-        pixel.probsSquaredDiffSum += (pixel.probsSum[0] - pixel.probsSum[1]) 
-                                * (pixel.probsSum[0] - pixel.probsSum[1]);
+        // unused now
     }
 
     // [MIS Divergence]: first version with 2 sampling method
     PBRT_CPU_GPU
-    void UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf) {
+    void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {
         Pixel &pixel = pixels[p];
 
-        pixel.probsSum[0] += fpdf;
-        pixel.probsSum[1] += gpdf;
+        RGB rgb = sensor->ToSensorRGB(L, lambda);
+        Float luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+
+        pixel.weightedLuminanceSum += std::pow(luminance, pixel.gammaTsallis);
+
+        // [MIS]: update xi and xi' with respect to equations 30-31
+        Float alphaProbs = pixel.alphaMIS * fpdf + (1 - pixel.alphaMIS) * gpdf;
+
+        // check not null value
+        if (alphaProbs <= 0)
+            alphaProbs += std::numeric_limits<Float>::epsilon();
+
+        // for \xi
+        pixel.probsSum[0] += std::pow(alphaProbs, pixel.gammaTsallis + 1);
+        // for \xi_{\prime}
+        pixel.probsSum[1] += std::pow(alphaProbs, pixel.gammaTsallis + 2);
+
+        pixel.probsDiffSum += (fpdf - gpdf);
+        pixel.probsSquaredDiffSum += (fpdf - gpdf) * (fpdf - gpdf);
     }
 
     PBRT_CPU_GPU
@@ -344,37 +343,33 @@ class RGBFilm : public FilmBase {
         
         Pixel &pixel = pixels[p];
 
-        if (pixel.nsamples < 10)
+        if (pixel.nsamples < Pixel::samplesBatch)
             return;
 
         std::cout << "Data for pixel " << p << " at samples " << pixel.nsamples << std::endl;
-        Float luminance = 0.2126 * pixel.rgbSum[0] + 0.7152 * pixel.rgbSum[1] + 0.0722 * pixel.rgbSum[2];
-        std::cout << " -- Luminance: " << luminance << std::endl;
+
+        // TODO: sum of luminance is already weighted by pdfs.
+        // Need to update UpdateProbsMIS, in order to take into account 
+        // luminance without balance heuristic and then update internal data 
+        // in order to compute xi_{\alpha}
+        std::cout << " -- Luminance sum: " << pixel.weightedLuminanceSum << std::endl;
         std::cout << " -- Current alpha: " << pixel.alphaMIS << std::endl;
 
-        // [MIS]: update xi and xi' with respect to equations 30-31
-        Float probsSum = pixel.alphaMIS * pixel.pdfTotalSum[0] 
-                        + (1 - pixel.alphaMIS) * pixel.pdfTotalSum[1];
-
-        if (probsSum <= 0)
-            probsSum += std::numeric_limits<Float>::epsilon();
-
-        std::cout << " -- Probs sum: " << probsSum << std::endl;
         std::cout << " -- Probs diff sum: " << pixel.probsDiffSum << std::endl;
         std::cout << " -- Probs diff^2 sum: " << pixel.probsSquaredDiffSum << std::endl;
 
-        Float xiAlpha = (((luminance * pixel.gammaTsallis) / std::pow(probsSum, pixel.gammaTsallis + 1.))
-                        * pixel.probsDiffSum) / pixel.nsamples;
+        Float xiAlpha = ((pixel.weightedLuminanceSum / pixel.probsSum[0]) 
+                    * pixel.probsDiffSum) / pixel.nsamples;
 
-        Float xiPrimeAlpha = (((luminance * pixel.gammaTsallis) / std::pow(probsSum, pixel.gammaTsallis + 2.))
+        Float xiPrimeAlpha = ((pixel.weightedLuminanceSum / pixel.probsSum[1])
                         * pixel.probsSquaredDiffSum) * (-pixel.gammaTsallis / pixel.nsamples);
 
         if (xiPrimeAlpha <= 0)
             xiPrimeAlpha += std::numeric_limits<Float>::epsilon();
 
-
         std::cout << " -- xiAlpha: " << xiAlpha << std::endl;
         std::cout << " -- xiPrimeAlpha: " << xiAlpha << std::endl;
+        std::cout << " -- Gradient step: " << (xiAlpha / xiPrimeAlpha) << std::endl;
         std::cout << " -- new Alpha MIS: " << pixel.alphaMIS - (xiAlpha / xiPrimeAlpha) << std::endl;
 
         std::cout << "-------------------------" << std::endl;
@@ -388,9 +383,8 @@ class RGBFilm : public FilmBase {
 
         // std::cout << xiAlpha << " vs " << xiPrimeAlpha << std::endl;
 
-        // reset for next sample (generated path)
-        pixel.probsSum[0] = 0;
-        pixel.probsSum[1] = 0;
+        // reset for next Pixel::batchSamples (number of generated paths)
+        pixel.reset();
     }
 
     RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
@@ -421,19 +415,30 @@ class RGBFilm : public FilmBase {
     // RGBFilm::Pixel Definition
     struct Pixel {
         static const int nPDFs = 2;
+        static const int samplesBatch = 10;
 
         Pixel() {
-            for (int i = 0; i < Pixel::nPDFs; i++) {
-                probsSum[i] = 0.;
-                pdfTotalSum[i] = 0;
-            }
-
+            probsSum[0] = 0.;
+            probsSum[1] = 0.;
         };
+
+        void reset() {
+            nsamples = 0;
+
+            probsSum[0] = 0.;
+            probsSum[1] = 0.;
+
+            weightedLuminanceSum = 0.;
+
+            probsDiffSum = 0.;
+            probsSquaredDiffSum = 0.;
+        }
+
         // By default static number of PDFs
         double alphaMIS = 0.5;
         double gammaTsallis = 1.;
+        double weightedLuminanceSum = 0.;
         double probsSum[nPDFs];
-        double pdfTotalSum[nPDFs];
         double probsDiffSum = 0.;
         double probsSquaredDiffSum = 0.;
 
@@ -507,7 +512,7 @@ class GBufferFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
-    void UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf) {}
+    void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {}
 
     PBRT_CPU_GPU
     void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {}
@@ -619,7 +624,7 @@ class SpectralFilm : public FilmBase {
    
 
     PBRT_CPU_GPU
-    void UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf) {}
+    void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {}
 
     PBRT_CPU_GPU
     void ComputeUpdatedAlpha(Point2i p) {}
@@ -761,8 +766,8 @@ inline void Film::UpdateSampleMIS(const Point2i p, SampledSpectrum L, const Samp
 }
 
 PBRT_CPU_GPU
-inline void Film::UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf) {
-    auto upd = [&](auto ptr) { return ptr->UpdateProbsMIS(p, fpdf, gpdf); };
+inline void Film::UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {
+    auto upd = [&](auto ptr) { return ptr->UpdateProbsMIS(p, L, lambda, fpdf, gpdf); };
     return Dispatch(upd);
 }
 

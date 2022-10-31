@@ -64,7 +64,7 @@ class Film : public TaggedPointer<RGBFilm, GBufferFilm, SpectralFilm> {
    
     // [MIS Divergence]: first version with 2 sampling method
     PBRT_CPU_GPU
-    void UpdateProbsMIS(const Point2i p, Float fpdf, Float gpdf);
+    void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf);
 
     PBRT_CPU_GPU
     void ComputeUpdatedAlpha(Point2i p);

@@ -665,8 +665,7 @@ SampledSpectrum PathIntegrator::Li(const Point2i pPixel, RayDifferential ray, Sa
                     // => https://www.pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/Sampling_Reflection_Functions
                     // p(x) = cos(\theta) / \pi
                     Float w_b = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
-                    camera.GetFilm().UpdateProbsMIS(pPixel, bsdfPDF, lightProb);
-                    // std::cout << "Pixel:" << pPixel << " width depth: " << depth << " has [bsdfPDF: " << bsdfPDF << ", lightPDF: " << lightPDF<< "]" << std::endl;  
+                    camera.GetFilm().UpdateProbsMIS(pPixel, beta * Le, lambda, bsdfPDF, lightPDF);
                     L += beta * w_b * Le;
                 }
             }
@@ -694,7 +693,7 @@ SampledSpectrum PathIntegrator::Li(const Point2i pPixel, RayDifferential ray, Sa
                 // => https://www.pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/Sampling_Reflection_Functions
                 // p(x) = cos(\theta) / \pi
                 Float w_l = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
-                camera.GetFilm().UpdateProbsMIS(pPixel, bsdfPDF, lightProb);
+                camera.GetFilm().UpdateProbsMIS(pPixel, beta * Le, lambda, bsdfPDF, lightPDF);
                 
                 L += beta * w_l * Le;
             }
@@ -749,12 +748,11 @@ SampledSpectrum PathIntegrator::Li(const Point2i pPixel, RayDifferential ray, Sa
         if (IsNonSpecular(bsdf.Flags())) {
             ++totalPaths;
 
-            // TODO [MIS] check this Ld: really use?
+            // [MIS] check SampleLd for MIS
             SampledSpectrum Ld = SampleLd(pPixel, isect, &bsdf, lambda, sampler);
             if (!Ld)
                 ++zeroRadiancePaths;
             L += beta * Ld;
-            // std::cout << "Pixel:" << pPixel << " width depth: " << depth << " has direct lighting " << std::endl;  
         }
 
         // Sample BSDF to get new path direction
@@ -786,9 +784,6 @@ SampledSpectrum PathIntegrator::Li(const Point2i pPixel, RayDifferential ray, Sa
         }
     }
     pathLength << depth;
-
-    // [MIS Divergence]
-    camera.GetFilm().UpdateSampleMIS(pPixel, L, lambda, depth);
 
     return L;
 }
@@ -840,9 +835,7 @@ SampledSpectrum PathIntegrator::SampleLd(const Point2i pPixel, const SurfaceInte
         // TODO MIS: Take care of inverse balance heuristic PDF params
         // Check expected prob for MIS updates
         Float w_l = BalanceHeuristicDivergence(1 - alphaMIS, p_l, p_b);
-
-        // TODO: direct lighting not taken into account?
-        camera.GetFilm().UpdateProbsMIS(pPixel, p_b, sampledLight->p);
+        camera.GetFilm().UpdateProbsMIS(pPixel, ls->L * f / p_l, lambda, p_b, p_l);
 
         return w_l * ls->L * f / p_l;
     }
