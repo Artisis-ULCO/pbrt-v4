@@ -380,9 +380,9 @@ class RGBFilm : public FilmBase {
         // luminance without balance heuristic and then update internal data 
         // in order to compute xi_{\alpha}
 
-        Float xiAlpha = pixel.xiSum / pixel.nsamples;
+        Float xiAlpha = pixel.xiSum / pixel.samplesBatch;
 
-        Float xiPrimeAlpha = pixel.xiPrimeSum * (-pixel.gammaTsallis / pixel.nsamples);
+        Float xiPrimeAlpha = pixel.xiPrimeSum * (-pixel.gammaTsallis / pixel.samplesBatch);
 
         if (xiPrimeAlpha <= 0)
             xiPrimeAlpha += std::numeric_limits<Float>::epsilon();
