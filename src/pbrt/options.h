@@ -34,6 +34,14 @@ struct BasicPBRTOptions {
 // PBRTOptions Definition
 struct PBRTOptions : BasicPBRTOptions {
     int nThreads = 0;
+    
+    // [MIS] parameters
+    std::string folderName = "temp";
+    Float alphaMIS = 0.5;
+    Float tsallisMIS = 1;
+    int alphaFixed = 0;
+    pstd::optional<int> ndigits = 6;
+
     LogLevel logLevel = LogLevel::Error;
     std::string logFile;
     bool logUtilization = false;

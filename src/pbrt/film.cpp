@@ -28,6 +28,7 @@
 #include <pbrt/util/stats.h>
 #include <pbrt/util/transform.h>
 
+#include <sys/stat.h>
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -518,21 +519,39 @@ void RGBFilm::AddSplat(Point2f p, SampledSpectrum L, const SampledWavelengths &l
 
 void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale) {
     Image image = GetImage(&metadata, splatScale);
-    LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
-    image.Write(filename, metadata);
+
+        // P3D : updates create new image with `spp` samples
+    // define delimiter to split image name
+    std::string delimiter = ".";
+    std::string outputFolder = Options->folderName;
+    
+    // find prefix and postfix information from `filename`
+    std::string filenamePrefix = filename.substr(0, filename.find(delimiter));
+    std::string filenamePostfix = filename.substr(filename.find(delimiter), filename.length());
+
+    // build folder
+    std::string folderImage = std::string(outputFolder + "/" + filenamePrefix);
+    std::string tempFilename = outputFolder + "/" + filenamePrefix + "/" + filenamePrefix+ "-S" + std::to_string(*Options->pixelSamples) + filenamePostfix;
+    
+    // TODO : improve (recursively create folders)
+    mkdir(outputFolder.c_str(), 0775);
+    mkdir(folderImage.c_str(), 0775);
+
+
+    LOG_VERBOSE("Writing image %s with bounds %s", tempFilename, pixelBounds);
+    image.Write(tempFilename, metadata);
 
     // [MIS Divergence]: write alpha map
-    std::string::size_type ext = filename.find(".");
-    std::string prefix = filename.substr(0, ext);
+    std::string::size_type ext = tempFilename.find(".");
+    std::string prefix = tempFilename.substr(0, ext);
     std::string mapFilename = prefix + ".map";
 
     std::ofstream file;
     file.open(mapFilename);
 
-
-    for (int i = 0; i < fullResolution.y; i++) {
-        for (int j = 0; j < fullResolution.x; j++) {
-
+    for (int j = 0; j < fullResolution.y; j++) {
+        for (int i = 0; i < fullResolution.x; i++) {
+            
             Point2i p = Point2i(i, j);
             file << pixels[p].alphaMIS << ";";
         }
@@ -541,6 +560,7 @@ void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale) {
     }
 
     file.close();
+    std::cout << "AlphaMap saved into: " << mapFilename << std::endl;
 }
 
 Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {

@@ -223,7 +223,7 @@ class FilmBase {
     void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf);
 
     PBRT_CPU_GPU
-    void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth);
+    void UpdateNSamplesMIS(Point2i p);
      
     PBRT_CPU_GPU
     void ComputeUpdatedAlpha(Point2i p);
@@ -292,8 +292,11 @@ class RGBFilm : public FilmBase {
     PBRT_CPU_GPU
     Float GetMISAlpha(const Point2i p) const {
 
+        if (Options->alphaFixed)
+            return Options->alphaMIS;
+ 
         const Pixel &pixel = pixels[p];
-        
+       
         // [MIS] 5 samples for first method / 5 samples for second method
         if (pixel.nsamples < (int)(Pixel::samplesBatch / 2)) {
             return 0.99;
@@ -306,85 +309,103 @@ class RGBFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
-    void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {
+    void UpdateNSamplesMIS(Point2i p) {
+
+        if (Options->alphaFixed)
+            return;
+        
         Pixel &pixel = pixels[p];
 
         // unused now
+        pixel.nsamples += 1;
     }
 
     // [MIS Divergence]: first version with 2 sampling method
     PBRT_CPU_GPU
     void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {
+        
         Pixel &pixel = pixels[p];
+
+        // if (p.x == 100 && p.y == 100)
+        //     std::cout << "Data for pixel " << p << " at samples " << pixel.nsamples << std::endl;
+        // else
+        //     return;
+
+        // std::cout << "bsdfPDF: " << fpdf << std::endl;
+        // std::cout << "lightPDF: " << gpdf << std::endl;
 
         RGB rgb = sensor->ToSensorRGB(L, lambda);
         Float luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+        Float luminanceTsallis = std::pow(luminance, pixel.gammaTsallis);
 
-        pixel.weightedLuminanceSum += std::pow(luminance, pixel.gammaTsallis);
+        // std::cout << "Luminance: " <<  luminance << std::endl;
+        // std::cout << "LuminanceT: " <<  luminanceTsallis << std::endl;
 
         // [MIS]: update xi and xi' with respect to equations 30-31
         Float alphaProbs = pixel.alphaMIS * fpdf + (1 - pixel.alphaMIS) * gpdf;
+
+        // std::cout << "p(\alpha, X_i): " << alphaProbs << std::endl;
 
         // check not null value
         if (alphaProbs <= 0)
             alphaProbs += std::numeric_limits<Float>::epsilon();
 
-        // for \xi
-        pixel.probsSum[0] += std::pow(alphaProbs, pixel.gammaTsallis + 1);
-        // for \xi_{\prime}
-        pixel.probsSum[1] += std::pow(alphaProbs, pixel.gammaTsallis + 2);
+        pixel.xiSum += (luminanceTsallis / std::pow(alphaProbs, pixel.gammaTsallis + 1)) 
+                        * (fpdf - gpdf);
 
-        pixel.probsDiffSum += (fpdf - gpdf);
-        pixel.probsSquaredDiffSum += (fpdf - gpdf) * (fpdf - gpdf);
+        // std::cout << "xi term: " << (luminanceTsallis / std::pow(alphaProbs, pixel.gammaTsallis + 1)) 
+                        // * (fpdf - gpdf) << std::endl;
+        pixel.xiPrimeSum += (luminanceTsallis / std::pow(alphaProbs, pixel.gammaTsallis + 2)) 
+                        * (std::pow(fpdf - gpdf, 2));
+
+        // std::cout << "xi' term: " << (luminanceTsallis / std::pow(alphaProbs, pixel.gammaTsallis + 2)) 
+                        // * ((fpdf - gpdf) * (fpdf - gpdf)) << std::endl;
+        // }
+
+        // std::cout << "[" << pixel.nsamples << "] xi: " << pixel.xiSum << ", xi': " << pixel.xiPrimeSum << std::endl;
     }
 
     PBRT_CPU_GPU
     void ComputeUpdatedAlpha(Point2i p) {
         
+        if (Options->alphaFixed)
+            return;
+        
         Pixel &pixel = pixels[p];
 
-        if (pixel.nsamples < Pixel::samplesBatch)
+        if ((pixel.nsamples % Pixel::samplesBatch) != 0)
             return;
 
-        std::cout << "Data for pixel " << p << " at samples " << pixel.nsamples << std::endl;
-
-        // TODO: sum of luminance is already weighted by pdfs.
         // Need to update UpdateProbsMIS, in order to take into account 
         // luminance without balance heuristic and then update internal data 
         // in order to compute xi_{\alpha}
-        std::cout << " -- Luminance sum: " << pixel.weightedLuminanceSum << std::endl;
-        std::cout << " -- Current alpha: " << pixel.alphaMIS << std::endl;
 
-        std::cout << " -- Probs diff sum: " << pixel.probsDiffSum << std::endl;
-        std::cout << " -- Probs diff^2 sum: " << pixel.probsSquaredDiffSum << std::endl;
+        Float xiAlpha = pixel.xiSum / pixel.nsamples;
 
-        Float xiAlpha = ((pixel.weightedLuminanceSum / pixel.probsSum[0]) 
-                    * pixel.probsDiffSum) / pixel.nsamples;
-
-        Float xiPrimeAlpha = ((pixel.weightedLuminanceSum / pixel.probsSum[1])
-                        * pixel.probsSquaredDiffSum) * (-pixel.gammaTsallis / pixel.nsamples);
+        Float xiPrimeAlpha = pixel.xiPrimeSum * (-pixel.gammaTsallis / pixel.nsamples);
 
         if (xiPrimeAlpha <= 0)
             xiPrimeAlpha += std::numeric_limits<Float>::epsilon();
 
-        std::cout << " -- xiAlpha: " << xiAlpha << std::endl;
-        std::cout << " -- xiPrimeAlpha: " << xiAlpha << std::endl;
-        std::cout << " -- Gradient step: " << (xiAlpha / xiPrimeAlpha) << std::endl;
-        std::cout << " -- new Alpha MIS: " << pixel.alphaMIS - (xiAlpha / xiPrimeAlpha) << std::endl;
+        // std::cout << " -- xiAlpha: " << xiAlpha << std::endl;
+        // std::cout << " -- xiPrimeAlpha: " << xiPrimeAlpha << std::endl;
+        // std::cout << " -- Gradient step: " << (xiAlpha / xiPrimeAlpha) << std::endl;
+        // std::cout << " -- new Alpha MIS: " << pixel.alphaMIS - (xiAlpha / xiPrimeAlpha) << std::endl;
 
-        std::cout << "-------------------------" << std::endl;
-        return;
+        // std::cout << "-------------------------" << std::endl;
 
         // [MIS]: update xi and xi' with respect to equation 32
         pixel.alphaMIS = pixel.alphaMIS - (xiAlpha / xiPrimeAlpha);
-
-        if (pixel.alphaMIS < 0) 
-            pixel.alphaMIS = std::numeric_limits<Float>::epsilon();
-
-        // std::cout << xiAlpha << " vs " << xiPrimeAlpha << std::endl;
+        // std::cout << p << ":: computed alpha: " << pixel.alphaMIS << std::endl;
 
         // reset for next Pixel::batchSamples (number of generated paths)
         pixel.reset();
+
+        if (pixel.alphaMIS <= 0) 
+            pixel.alphaMIS = std::numeric_limits<Float>::epsilon();
+
+        if (pixel.alphaMIS >= 1) 
+            pixel.alphaMIS = 1. - std::numeric_limits<Float>::epsilon();
     }
 
     RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
@@ -417,34 +438,23 @@ class RGBFilm : public FilmBase {
         static const int nPDFs = 2;
         static const int samplesBatch = 10;
 
-        Pixel() {
-            probsSum[0] = 0.;
-            probsSum[1] = 0.;
-        };
+        Pixel() {};
 
         void reset() {
-            nsamples = 0;
 
-            probsSum[0] = 0.;
-            probsSum[1] = 0.;
-
-            weightedLuminanceSum = 0.;
-
-            probsDiffSum = 0.;
-            probsSquaredDiffSum = 0.;
+            xiSum = 0.;
+            xiPrimeSum = 0.;
         }
 
         // By default static number of PDFs
-        double alphaMIS = 0.5;
-        double gammaTsallis = 1.;
-        double weightedLuminanceSum = 0.;
-        double probsSum[nPDFs];
-        double probsDiffSum = 0.;
-        double probsSquaredDiffSum = 0.;
+        double alphaMIS = Options->alphaMIS;
+        double gammaTsallis = Options->tsallisMIS;
+        double xiSum = 0.;
+        double xiPrimeSum = 0.;
+        int nsamples = 0;
 
         double rgbSum[3] = {0., 0., 0.};
         double weightSum = 0.;
-        int nsamples = 0;
         AtomicDouble rgbSplat[3];
     };
 
@@ -515,7 +525,7 @@ class GBufferFilm : public FilmBase {
     void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {}
 
     PBRT_CPU_GPU
-    void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {}
+    void UpdateNSamplesMIS(Point2i p) {}
 
     PBRT_CPU_GPU
     void ComputeUpdatedAlpha(Point2i p) {}
@@ -620,7 +630,7 @@ class SpectralFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
-    void UpdateSampleMIS(Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {}
+    void UpdateNSamplesMIS(Point2i p) {}
    
 
     PBRT_CPU_GPU
@@ -760,8 +770,8 @@ inline Float Film::GetMISAlpha(const Point2i p) const {
 }
 
 PBRT_CPU_GPU
-inline void Film::UpdateSampleMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, int depth) {
-    auto upd = [&](auto ptr) { return ptr->UpdateSampleMIS(p, L, lambda, depth); };
+inline void Film::UpdateNSamplesMIS(const Point2i p) {
+    auto upd = [&](auto ptr) { return ptr->UpdateNSamplesMIS(p); };
     return Dispatch(upd);
 }
 

@@ -191,6 +191,10 @@ int main(int argc, char *argv[]) {
             ParseArg(&iter, args.end(), "render-coord-sys", &renderCoordSys, onError) ||
             ParseArg(&iter, args.end(), "seed", &options.seed, onError) ||
             ParseArg(&iter, args.end(), "spp", &options.pixelSamples, onError) ||
+            ParseArg(&iter, args.end(), "folder", &options.folderName, onError) ||
+            ParseArg(&iter, args.end(), "alpha", &options.alphaMIS, onError) ||
+            ParseArg(&iter, args.end(), "fixed", &options.alphaFixed, onError) ||
+            ParseArg(&iter, args.end(), "tsallis", &options.tsallisMIS, onError) ||
             ParseArg(&iter, args.end(), "stats", &options.printStatistics, onError) ||
             ParseArg(&iter, args.end(), "toply", &toPly, onError) ||
             ParseArg(&iter, args.end(), "wavefront", &options.wavefront, onError) ||
