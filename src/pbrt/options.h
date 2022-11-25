@@ -39,6 +39,7 @@ struct PBRTOptions : BasicPBRTOptions {
     std::string folderName = "temp";
     Float alphaMIS = 0.5;
     Float tsallisMIS = 1;
+    int batchMIS = 10;
     int alphaFixed = 0;
     pstd::optional<int> ndigits = 6;
 

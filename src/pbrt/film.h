@@ -298,9 +298,9 @@ class RGBFilm : public FilmBase {
         const Pixel &pixel = pixels[p];
        
         // [MIS] 5 samples for first method / 5 samples for second method
-        if (pixel.nsamples < (int)(Pixel::samplesBatch / 2)) {
+        if (pixel.nsamples < (int)(pixel.samplesBatch / 2)) {
             return 0.99;
-        } else if (pixel.nsamples < Pixel::samplesBatch) {
+        } else if (pixel.nsamples < pixel.samplesBatch) {
             return 0.01;
         }
 
@@ -340,6 +340,10 @@ class RGBFilm : public FilmBase {
 
         // std::cout << "Luminance: " <<  luminance << std::endl;
         // std::cout << "LuminanceT: " <<  luminanceTsallis << std::endl;
+        
+        // Try normalizing pdf
+        // Float fpdfNorm = fpdf / (gpdf + fpdf);
+        // Float gpdfNorm = gpdf / (gpdf + fpdf);
 
         // [MIS]: update xi and xi' with respect to equations 30-31
         Float alphaProbs = pixel.alphaMIS * fpdf + (1 - pixel.alphaMIS) * gpdf;
@@ -373,7 +377,7 @@ class RGBFilm : public FilmBase {
         
         Pixel &pixel = pixels[p];
 
-        if ((pixel.nsamples % Pixel::samplesBatch) != 0)
+        if ((pixel.nsamples % pixel.samplesBatch) != 0)
             return;
 
         // Need to update UpdateProbsMIS, in order to take into account 
@@ -436,7 +440,6 @@ class RGBFilm : public FilmBase {
     // RGBFilm::Pixel Definition
     struct Pixel {
         static const int nPDFs = 2;
-        static const int samplesBatch = 10;
 
         Pixel() {};
 
@@ -446,7 +449,7 @@ class RGBFilm : public FilmBase {
             xiPrimeSum = 0.;
         }
 
-        // By default static number of PDFs
+        int samplesBatch = Options->batchMIS;
         double alphaMIS = Options->alphaMIS;
         double gammaTsallis = Options->tsallisMIS;
         double xiSum = 0.;

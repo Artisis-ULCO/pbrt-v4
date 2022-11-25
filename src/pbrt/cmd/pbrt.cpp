@@ -195,6 +195,7 @@ int main(int argc, char *argv[]) {
             ParseArg(&iter, args.end(), "alpha", &options.alphaMIS, onError) ||
             ParseArg(&iter, args.end(), "fixed", &options.alphaFixed, onError) ||
             ParseArg(&iter, args.end(), "tsallis", &options.tsallisMIS, onError) ||
+            ParseArg(&iter, args.end(), "batch", &options.batchMIS, onError) ||
             ParseArg(&iter, args.end(), "stats", &options.printStatistics, onError) ||
             ParseArg(&iter, args.end(), "toply", &toPly, onError) ||
             ParseArg(&iter, args.end(), "wavefront", &options.wavefront, onError) ||
