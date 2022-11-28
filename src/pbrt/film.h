@@ -326,7 +326,7 @@ class RGBFilm : public FilmBase {
         
         Pixel &pixel = pixels[p];
 
-        // if (p.x == 100 && p.y == 100)
+        // if (p.x == 122 && p.y == 122)
         //     std::cout << "Data for pixel " << p << " at samples " << pixel.nsamples << std::endl;
         // else
         //     return;
