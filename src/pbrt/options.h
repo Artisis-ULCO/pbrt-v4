@@ -44,6 +44,7 @@ struct PBRTOptions : BasicPBRTOptions {
     pstd::optional<int> gpuDevice;
     bool quickRender = false;
     bool upgrade = false;
+    std::string animation;
     std::string imageFile;
     std::string mseReferenceImage, mseReferenceOutput;
     std::string debugStart;

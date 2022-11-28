@@ -515,6 +515,7 @@ set (PBRT_SOURCE
   src/pbrt/film.cpp
   src/pbrt/filters.cpp
   src/pbrt/interaction.cpp
+  src/pbrt/interpolation.cpp
   src/pbrt/lights.cpp
   src/pbrt/lightsamplers.cpp
   src/pbrt/materials.cpp
@@ -540,6 +541,7 @@ set (PBRT_SOURCE_HEADERS
   src/pbrt/film.h
   src/pbrt/filters.h
   src/pbrt/interaction.h
+  src/pbrt/interpolation.h
   src/pbrt/lightsamplers.h
   src/pbrt/lights.h
   src/pbrt/materials.h

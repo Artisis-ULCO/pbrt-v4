@@ -252,6 +252,7 @@ Camera Camera::Create(const std::string &name, const ParameterDictionary &parame
     else if (name == "realistic")
         camera = RealisticCamera::Create(parameters, cameraTransform, film, medium, loc,
                                          alloc);
+                                         
     else if (name == "spherical")
         camera = SphericalCamera::Create(parameters, cameraTransform, film, medium, loc,
                                          alloc);

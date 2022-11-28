@@ -24,6 +24,7 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
 
 using namespace pbrt;
 
@@ -191,6 +192,7 @@ int main(int argc, char *argv[]) {
             ParseArg(&iter, args.end(), "render-coord-sys", &renderCoordSys, onError) ||
             ParseArg(&iter, args.end(), "seed", &options.seed, onError) ||
             ParseArg(&iter, args.end(), "spp", &options.pixelSamples, onError) ||
+            ParseArg(&iter, args.end(), "animation", &options.animation, onError) ||
             ParseArg(&iter, args.end(), "stats", &options.printStatistics, onError) ||
             ParseArg(&iter, args.end(), "toply", &toPly, onError) ||
             ParseArg(&iter, args.end(), "wavefront", &options.wavefront, onError) ||
@@ -268,11 +270,21 @@ int main(int argc, char *argv[]) {
         BasicSceneBuilder builder(&scene);
         ParseFiles(&builder, filenames);
 
-        // Render the scene
-        if (Options->useGPU || Options->wavefront)
-            RenderWavefront(scene);
-        else
-            RenderCPU(scene);
+        // TODO: parser for camera animation
+        // déterminer si on rend une seule image ou une séquence
+        if(&options.animation) {
+
+            // if CameraAnim loaded
+            std::cout << "fichier camera anim = " << &options.animation << std::endl;
+        }
+        else {
+
+            // Render the scene
+            if (Options->useGPU || Options->wavefront)
+                RenderWavefront(scene);
+            else
+                RenderCPU(scene);
+        }
 
         LOG_VERBOSE("Memory used after post-render cleanup: %s", GetCurrentRSS());
         // Clean up after rendering the scene

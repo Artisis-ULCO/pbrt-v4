@@ -278,6 +278,29 @@ class ProjectiveCamera : public CameraBase {
     Float lensRadius, focalDistance;
 };
 
+// TODO: adapt using current camera formalism
+class CameraAnim {
+    public:
+
+        CameraAnim();
+        CameraAnim(std::string filename);
+
+        bool load(std::string filename);
+
+        bool getViewpoint(Point3f &at, Point3f &to, Vector3f &up);
+
+        int getCurrentFrameId(){ return curvp; }
+        int getNumberOfFrame(){ return pos.size(); }
+
+    private:
+        std::vector<Point3f> pos, look;
+        std::vector<Vector3f> up;
+        int curvp;// indice du point de vue courant
+        int numberOfFrames; // nombre de frames composant la séquence
+
+        void interpolCamerasLocation();
+};
+
 // OrthographicCamera Definition
 class OrthographicCamera : public ProjectiveCamera {
   public:
