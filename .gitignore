@@ -5,6 +5,7 @@ src/build
 .DS_Store
 .ipynb_checkpoints/
 build/
+build-*
 .cache/
 .vscode
-build-*
+results

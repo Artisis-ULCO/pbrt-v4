@@ -220,7 +220,13 @@ class FilmBase {
 
     // TODO [MIS]: first version with 2 sampling method
     PBRT_CPU_GPU
-    void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf);
+    Float GetLuminance(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda);
+
+    PBRT_CPU_GPU
+    void UpdateBSDFSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf);
+
+    PBRT_CPU_GPU
+    void UpdateLightSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf);
 
     PBRT_CPU_GPU
     void UpdateNSamplesMIS(Point2i p);
@@ -322,7 +328,7 @@ class RGBFilm : public FilmBase {
 
     // [MIS Divergence]: first version with 2 sampling method
     PBRT_CPU_GPU
-    void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {
+    Float GetLuminance(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda) {
         
         Pixel &pixel = pixels[p];
 
@@ -331,42 +337,28 @@ class RGBFilm : public FilmBase {
         // else
         //     return;
 
-        // std::cout << "bsdfPDF: " << fpdf << std::endl;
-        // std::cout << "lightPDF: " << gpdf << std::endl;
-
         RGB rgb = sensor->ToSensorRGB(L, lambda);
         Float luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-        Float luminanceTsallis = std::pow(luminance, pixel.gammaTsallis);
-
-        // std::cout << "Luminance: " <<  luminance << std::endl;
-        // std::cout << "LuminanceT: " <<  luminanceTsallis << std::endl;
         
-        // Try normalizing pdf
-        // Float fpdfNorm = fpdf / (gpdf + fpdf);
-        // Float gpdfNorm = gpdf / (gpdf + fpdf);
+        return luminance;
+    }
 
-        // [MIS]: update xi and xi' with respect to equations 30-31
-        Float alphaProbs = pixel.alphaMIS * fpdf + (1 - pixel.alphaMIS) * gpdf;
+    PBRT_CPU_GPU
+    void UpdateBSDFSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf) {
+        Pixel &pixel = pixels[p];
 
-        // std::cout << "p(\alpha, X_i): " << alphaProbs << std::endl;
+        pixel.LSumBSDF += luminance;
+        pixel.pdfBsdf1 += fpdf;
+        pixel.pdfBsdf2 += gpdf;
+    }
 
-        // check not null value
-        if (alphaProbs <= 0)
-            alphaProbs += std::numeric_limits<Float>::epsilon();
+    PBRT_CPU_GPU
+    void UpdateLightSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf) {
+        Pixel &pixel = pixels[p];
 
-        pixel.xiSum += (luminanceTsallis / std::pow(alphaProbs, pixel.gammaTsallis + 1)) 
-                        * (fpdf - gpdf);
-
-        // std::cout << "xi term: " << (luminanceTsallis / std::pow(alphaProbs, pixel.gammaTsallis + 1)) 
-                        // * (fpdf - gpdf) << std::endl;
-        pixel.xiPrimeSum += (luminanceTsallis / std::pow(alphaProbs, pixel.gammaTsallis + 2)) 
-                        * (std::pow(fpdf - gpdf, 2));
-
-        // std::cout << "xi' term: " << (luminanceTsallis / std::pow(alphaProbs, pixel.gammaTsallis + 2)) 
-                        // * ((fpdf - gpdf) * (fpdf - gpdf)) << std::endl;
-        // }
-
-        // std::cout << "[" << pixel.nsamples << "] xi: " << pixel.xiSum << ", xi': " << pixel.xiPrimeSum << std::endl;
+        pixel.LSumLight += luminance;
+        pixel.pdfLight1 += fpdf;
+        pixel.pdfLight2 += gpdf;
     }
 
     PBRT_CPU_GPU
@@ -380,30 +372,21 @@ class RGBFilm : public FilmBase {
         if ((pixel.nsamples % pixel.samplesBatch) != 0)
             return;
 
-        // Need to update UpdateProbsMIS, in order to take into account 
-        // luminance without balance heuristic and then update internal data 
-        // in order to compute xi_{\alpha}
+        // TODO: compute alpha
+        // p1 is Light
+        // p2 is BSDF
+        double nominateur = pixel.pdfBsdf2 * pixel.LSumLight - pixel.pdfBsdf1 * pixel.LSumBSDF;
+        double denominateur = pixel.pdfLight1 * pixel.LSumBSDF - pixel.pdfBsdf1 * pixel.LSumBSDF
+                        - pixel.pdfLight2 * pixel.LSumLight + pixel.pdfBsdf2 * pixel.LSumLight;
 
-        Float xiAlpha = pixel.xiSum / pixel.samplesBatch;
+        pixel.alphaMIS = nominateur / (denominateur  + std::numeric_limits<Float>::epsilon());
 
-        Float xiPrimeAlpha = pixel.xiPrimeSum * (-pixel.gammaTsallis / pixel.samplesBatch);
-
-        if (xiPrimeAlpha <= 0)
-            xiPrimeAlpha += std::numeric_limits<Float>::epsilon();
-
-        // std::cout << " -- xiAlpha: " << xiAlpha << std::endl;
-        // std::cout << " -- xiPrimeAlpha: " << xiPrimeAlpha << std::endl;
-        // std::cout << " -- Gradient step: " << (xiAlpha / xiPrimeAlpha) << std::endl;
-        // std::cout << " -- new Alpha MIS: " << pixel.alphaMIS - (xiAlpha / xiPrimeAlpha) << std::endl;
-
-        // std::cout << "-------------------------" << std::endl;
-
-        // [MIS]: update xi and xi' with respect to equation 32
-        pixel.alphaMIS = pixel.alphaMIS - (xiAlpha / xiPrimeAlpha);
-        // std::cout << p << ":: computed alpha: " << pixel.alphaMIS << std::endl;
-
+        // std::cout << p << " at sample " << pixel.nsamples << std::endl;
+        // std::cout << " -- Nominateur: " << nominateur << std::endl;
+        // std::cout << " -- Dénominateur: " << denominateur << std::endl;
+        // std::cout << " -- alpha: " << pixel.alphaMIS << std::endl;
         // reset for next Pixel::batchSamples (number of generated paths)
-        pixel.reset();
+        // pixel.reset();
 
         if (pixel.alphaMIS <= 0) 
             pixel.alphaMIS = std::numeric_limits<Float>::epsilon();
@@ -445,15 +428,18 @@ class RGBFilm : public FilmBase {
 
         void reset() {
 
-            xiSum = 0.;
-            xiPrimeSum = 0.;
         }
 
         int samplesBatch = Options->batchMIS;
         double alphaMIS = Options->alphaMIS;
-        double gammaTsallis = Options->tsallisMIS;
-        double xiSum = 0.;
-        double xiPrimeSum = 0.;
+        double LSumLight = 0;
+        double LSumBSDF = 0;
+        double pdfLight1 = 0;
+        double pdfLight2 = 0;
+        double pdfBsdf1 = 0;
+        double pdfBsdf2 = 0;
+        // int nsamplesFpdf = 0;
+        // int nsamplesGpdf = 0;
         int nsamples = 0;
 
         double rgbSum[3] = {0., 0., 0.};
@@ -525,7 +511,15 @@ class GBufferFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
-    void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {}
+    Float GetLuminance(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda) {
+        return 0.;
+    }
+
+    PBRT_CPU_GPU
+    void UpdateBSDFSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf) {}
+
+    PBRT_CPU_GPU
+    void UpdateLightSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf) {}
 
     PBRT_CPU_GPU
     void UpdateNSamplesMIS(Point2i p) {}
@@ -637,7 +631,15 @@ class SpectralFilm : public FilmBase {
    
 
     PBRT_CPU_GPU
-    void UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {}
+    Float GetLuminance(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda) {
+        return 0.;
+    }
+
+    PBRT_CPU_GPU
+    void UpdateBSDFSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf) {}
+
+    PBRT_CPU_GPU
+    void UpdateLightSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf) {}
 
     PBRT_CPU_GPU
     void ComputeUpdatedAlpha(Point2i p) {}
@@ -779,9 +781,21 @@ inline void Film::UpdateNSamplesMIS(const Point2i p) {
 }
 
 PBRT_CPU_GPU
-inline void Film::UpdateProbsMIS(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda, Float fpdf, Float gpdf) {
-    auto upd = [&](auto ptr) { return ptr->UpdateProbsMIS(p, L, lambda, fpdf, gpdf); };
+inline Float Film::GetLuminance(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda) {
+    auto upd = [&](auto ptr) { return ptr->GetLuminance(p, L, lambda); };
     return Dispatch(upd);
+}
+
+PBRT_CPU_GPU
+inline void Film::UpdateBSDFSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf) {
+    auto ubs = [&](auto ptr) { return ptr->UpdateBSDFSampling(p, luminance, fpdf, gpdf); };
+    return Dispatch(ubs);
+}
+
+PBRT_CPU_GPU
+inline void Film::UpdateLightSampling(const Point2i p, Float luminance, Float fpdf, Float gpdf) {
+    auto uls = [&](auto ptr) { return ptr->UpdateLightSampling(p, luminance, fpdf, gpdf); };
+    return Dispatch(uls);
 }
 
 PBRT_CPU_GPU
