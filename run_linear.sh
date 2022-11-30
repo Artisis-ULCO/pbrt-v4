@@ -1,8 +1,9 @@
 nspp=100
 batch=10
-buildFolder=build
+numthreads=8
+build=build-linear
 
-#./${buildFolder}/pbrt --spp $nspp --batch $batch --nthreads 8 --alpha 0.5 --fixed 1 --folder ${buildFolder}/MIS-Equal ../pbrt-v4-scenes-P3D/veach-mis/mis_v4.pbrt
-#./${buildFolder}/pbrt --spp $nspp --batch $batch --nthreads 8 --alpha 0.99 --fixed 1 --folder ${buildFolder}/MIS-BRDF ../pbrt-v4-scenes-P3D/veach-mis/mis_v4.pbrt
-#./${buildFolder}/pbrt --spp $nspp --batch $batch --nthreads 8 --alpha 0.01 --fixed 1 --folder ${buildFolder}/MIS-Light ../pbrt-v4-scenes-P3D/veach-mis/mis_v4.pbrt
-./${buildFolder}/pbrt --spp $nspp --batch $batch --nthreads 8 --alpha 0.5 --folder ${buildFolder}/MIS-Linear ../pbrt-v4-scenes-P3D/veach-mis/mis_v4.pbrt
+for scene in {"veach-mis/mis_v4.pbrt","bathroom2/scene-v4.pbrt","cornell-box/scene-v4.pbrt"}
+do
+    ./${build}/pbrt --spp $nspp --batch $batch --nthreads ${numthreads} --alpha 0.5 --folder ${build}/MIS-Linear ../pbrt-v4-scenes-P3D/${scene}
+done
