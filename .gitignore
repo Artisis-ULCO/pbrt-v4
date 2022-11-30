@@ -8,3 +8,5 @@ build/
 .cache/
 .vscode
 build-*
+MIS/figures
+results
