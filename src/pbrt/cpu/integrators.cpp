@@ -395,6 +395,11 @@ SimplePathIntegrator::SimplePathIntegrator(int maxDepth, bool sampleLights,
 SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                          Sampler sampler, ScratchBuffer &scratchBuffer,
                                          VisibleSurface *) const {
+
+
+    // use of MIS                                    
+    Float alphaMIS = camera.GetFilm().GetMISAlpha(pPixel);
+
     // Estimate radiance along ray using simple path tracing
     SampledSpectrum L(0.f), beta(1.f);
     bool specularBounce = true;
@@ -441,10 +446,19 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                     sampledLight->light.SampleLi(isect, uLight, lambda);
                 if (ls && ls->L && ls->pdf > 0) {
                     // Evaluate BSDF for light and possibly add scattered radiance
+
                     Vector3f wi = ls->wi;
                     SampledSpectrum f = bsdf.f(wo, wi) * AbsDot(wi, isect.shading.n);
+
+                    // use of MIS for light sampling
+                    // Need to get PDF if sampling using BSDF in same direction
+                    Float lightPDF = ls->pdf;
+                    Float bsdfPDF = bsdf.PDF(wo, wi);
+
+                    Float w_l = BalanceHeuristicDivergence(1 - alphaMIS, lightPDF, bsdfPDF);
+
                     if (f && Unoccluded(isect, ls->pLight))
-                        L += beta * f * ls->L / (sampledLight->p * ls->pdf);
+                        L += w_l * beta * f * ls->L / (sampledLight->p * ls->pdf);
                 }
             }
         }
@@ -454,8 +468,40 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
             // Sample BSDF for new path direction
             Float u = sampler.Get1D();
             pstd::optional<BSDFSample> bs = bsdf.Sample_f(wo, u, sampler.Get2D());
+
             if (!bs)
                 break;
+
+            // use of MIS for BSDF sampling
+            Vector3f wi = bs->wi;
+            SampledSpectrum f = bsdf.f(wo, wi) * AbsDot(wi, isect.shading.n);
+            Float bsdfPDF = bsdf.PDF(wo, wi);
+
+            if (f && bsdfPDF > 0) {
+                
+                // Need to get PDF if sampling using Light in same direction
+                pstd::optional<SampledLight> sampledLight = lightSampler.Sample(sampler.Get1D());
+
+                // Find intersection and compute transmittance
+                Ray ray = isect.SpawnRay(wi);
+                SampledSpectrum Tr(1.f);
+                pstd::optional<ShapeIntersection> lightIsect = Intersect(ray);
+
+                // Add light contribution from material sampling
+                SampledSpectrum Li(0.f);
+                if (lightIsect) {
+                    if (lightIsect->intr.areaLight == &sampledLight->light)
+                        Li = lightIsect->intr.Le(-wi, lambda);
+                } else
+                    Li = sampledLight->light.Le(ray, lambda);
+
+                // use of MIS and add contribution
+                Float lightPDF = sampledLight->light.PDF_Li(isect, wi);
+                Float w_b = BalanceHeuristicDivergence(alphaMIS, lightPDF, bsdfPDF);
+
+                if (!Li) L += f * Li * Tr * w_b / bsdfPDF;
+            }
+            
             beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
             specularBounce = bs->IsSpecular();
             ray = isect.SpawnRay(bs->wi);
@@ -644,6 +690,9 @@ SampledSpectrum PathIntegrator::Li(const Point2i pPixel, RayDifferential ray, Sa
 
     Float alphaMIS = camera.GetFilm().GetMISAlpha(pPixel);
 
+    std::cout << "-------------------------" << std::endl;
+    std::cout << "Li for " << pPixel << std::endl;
+
     // Sample path from camera and accumulate radiance estimate
     while (true) {
         // Trace ray and find closest path vertex and its BSDF
@@ -665,11 +714,11 @@ SampledSpectrum PathIntegrator::Li(const Point2i pPixel, RayDifferential ray, Sa
                     // => https://www.pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/Sampling_Reflection_Functions
                     // p(x) = cos(\theta) / \pi
                     Float w_b = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
-                    camera.GetFilm().UpdateProbsMIS(pPixel, beta * Le, lambda, bsdfPDF, lightProb);
+                    camera.GetFilm().UpdateProbsMIS(pPixel, beta * Le, lambda, bsdfPDF, lightPDF);
                     L += beta * w_b * Le;
 
-                    // std::cout << "[InfiniteLight] bsdfPDF: " << bsdfPDF << std::endl;
-                    // std::cout << "[InfiniteLight] lightPDF: " << lightPDF << std::endl;
+                    std::cout << "[InfiniteLight] bsdfPDF: " << bsdfPDF << std::endl;
+                    std::cout << "[InfiniteLight] lightPDF: " << lightPDF << std::endl;
                 }
             }
 
@@ -696,9 +745,9 @@ SampledSpectrum PathIntegrator::Li(const Point2i pPixel, RayDifferential ray, Sa
                 // => https://www.pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/Sampling_Reflection_Functions
                 // p(x) = cos(\theta) / \pi
                 Float w_l = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
-                camera.GetFilm().UpdateProbsMIS(pPixel, beta * Le, lambda, bsdfPDF, lightProb);
-                // std::cout << "[Emission] bsdfPDF: " << bsdfPDF << std::endl;
-                // std::cout << "[Emission] lightPDF: " << lightPDF << std::endl;
+                camera.GetFilm().UpdateProbsMIS(pPixel, beta * Le, lambda, bsdfPDF, lightPDF);
+                std::cout << "[Emission] bsdfPDF: " << bsdfPDF << std::endl;
+                std::cout << "[Emission] lightPDF: " << lightPDF << std::endl;
                 
                 L += beta * w_l * Le;
             }
@@ -822,6 +871,11 @@ SampledSpectrum PathIntegrator::SampleLd(const Point2i pPixel, const SurfaceInte
     Light light = sampledLight->light;
     DCHECK(light && sampledLight->p > 0);
     pstd::optional<LightLiSample> ls = light.SampleLi(ctx, uLight, lambda, true);
+    
+    std::cout << "[Ld] Prob: " << sampledLight->p << std::endl;
+    std::cout << "[Ld] PDF_Li (wo): " << light.PDF_Li(ctx, intr.wo, true) << std::endl;
+    std::cout << "[Ld] PDF_Li (wi): " << light.PDF_Li(ctx, ls->wi, true) << std::endl;
+
     if (!ls || !ls->L || ls->pdf == 0)
         return {};
 
@@ -834,10 +888,10 @@ SampledSpectrum PathIntegrator::SampleLd(const Point2i pPixel, const SurfaceInte
     // Return light's contribution to reflected radiance
     Float p_l = sampledLight->p * ls->pdf;
     if (IsDeltaLight(light.Type())) {
-        camera.GetFilm().UpdateProbsMIS(pPixel, ls->L * f / p_l, lambda, 0, sampledLight->p);
+        camera.GetFilm().UpdateProbsMIS(pPixel, ls->L * f / p_l, lambda, 0, p_l);
 
-        // std::cout << "[Ld delta] bsdfPDF: " << 0 << std::endl;
-        // std::cout << "[Ld delta] lightPDF: " << p_l << std::endl;
+        std::cout << "[Ld delta] bsdfPDF: " << 0 << std::endl;
+        std::cout << "[Ld delta] lightPDF: " << p_l << std::endl;
 
         return ls->L * f / p_l;
     }
@@ -848,10 +902,10 @@ SampledSpectrum PathIntegrator::SampleLd(const Point2i pPixel, const SurfaceInte
         // TODO MIS: Take care of inverse balance heuristic PDF params
         // Check expected prob for MIS updates
         Float w_l = BalanceHeuristicDivergence(1 - alphaMIS, p_l, p_b);
-        camera.GetFilm().UpdateProbsMIS(pPixel, ls->L * f / p_l, lambda, p_b, sampledLight->p);
+        camera.GetFilm().UpdateProbsMIS(pPixel, ls->L * f / p_l, lambda, p_b, p_l);
 
-        // std::cout << "[Ld] bsdfPDF: " << p_b << std::endl;
-        // std::cout << "[Ld] lightPDF: " << p_l << std::endl;
+        std::cout << "[Ld] bsdfPDF: " << p_b << std::endl;
+        std::cout << "[Ld] lightPDF: " << p_l << std::endl;
 
         return w_l * ls->L * f / p_l;
     }
