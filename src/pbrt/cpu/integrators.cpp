@@ -461,7 +461,7 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                         L += w_l * beta * f * ls->L / (sampledLight->p * ls->pdf);
 
                         Float luminance = camera.GetFilm().GetLuminance(pPixel, beta * f * ls->L, lambda);
-                        camera.GetFilm().UpdateLightSampling(pPixel, luminance, sampledLight->p, bsdfPDF);
+                        camera.GetFilm().UpdateLightSampling(pPixel, luminance, bsdfPDF, sampledLight->p);
                         // std::cout << "[Light Sampling] bsdfPDF: " << bsdfPDF << std::endl;
                         // std::cout << "[Light Sampling] lightPDF: " << lightPDF << std::endl;
                         // std::cout << "LightProb: " << sampledLight->p << std::endl;
@@ -511,7 +511,7 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                     L += f * Li * Tr * w_b / bsdfPDF;
 
                     Float luminance = camera.GetFilm().GetLuminance(pPixel, f * Li * Tr, lambda);
-                    camera.GetFilm().UpdateBSDFSampling(pPixel, luminance, lightChoicePDF, bsdfPDF);
+                    camera.GetFilm().UpdateBSDFSampling(pPixel, luminance, bsdfPDF, lightChoicePDF);
                     
                     // std::cout << "[BSDF Sampling] bsdfPDF: " << bsdfPDF << std::endl;
                     // std::cout << "[BSDF Sampling] lightPDF: " << lightPDF << std::endl;
