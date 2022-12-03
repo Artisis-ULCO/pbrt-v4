@@ -3,7 +3,8 @@ batch=10
 numthreads=8
 build=build
 
-for scene in {"veach-mis/mis_v4.pbrt","bathroom2/scene-v4.pbrt","cornell-box/scene-v4.pbrt"}
+#"bathroom2/scene-v4.pbrt","cornell-box/scene-v4.pbrt"}
+for scene in {"veach-mis/mis_v4.pbrt","veach-mis/mis_v4_specific.pbrt"}
 do
     ./${build}/pbrt --spp $nspp --batch $batch --nthreads ${numthreads} --alpha 0.5 --fixed 1 --folder ${build}/MIS-Equal ../pbrt-v4-scenes-P3D/${scene}
     ./${build}/pbrt --spp $nspp --batch $batch --nthreads ${numthreads} --alpha 0.99 --fixed 1 --folder ${build}/MIS-BRDF ../pbrt-v4-scenes-P3D/${scene}
