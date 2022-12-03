@@ -435,7 +435,6 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
         }
 
         // std::cout << "--------------------" << std::endl;
-        // std::cout << "Pixel: " << pPixel << std::endl;
 
         // Sample direct illumination if _sampleLights_ is true
         Vector3f wo = -ray.d;
@@ -462,7 +461,7 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
 
                     if (f && Unoccluded(isect, ls->pLight)) {
                         L += w_l * beta * f * ls->L / (sampledLight->p * ls->pdf);
-                        camera.GetFilm().UpdateProbsMIS(pPixel, f * ls->L / (sampledLight->p * ls->pdf), lambda, bsdfPDF, sampledLight->p);
+                        camera.GetFilm().UpdateProbsMIS(pPixel, f * ls->L, lambda, bsdfPDF, lightPDF);
                         // std::cout << "[Light Sampling] bsdfPDF: " << bsdfPDF << std::endl;
                         // std::cout << "[Light Sampling] lightPDF: " << lightPDF << std::endl;
                         // std::cout << "LightProb: " << sampledLight->p << std::endl;
@@ -505,11 +504,11 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                 Float lightPDF = sampledLight->light.PDF_Li(isect, wi);
                 // LightSampleContext prevIntrCtx = isect;
                 Float lightChoicePDF = lightSampler.PMF(isect, sampledLight->light);
-                Float w_b = BalanceHeuristicDivergence(alphaMIS, lightPDF, bsdfPDF);
+                Float w_b = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
                 
                 if (!Li) {
                     L += f * Li * Tr * w_b / bsdfPDF;
-                    camera.GetFilm().UpdateProbsMIS(pPixel, f * Li * Tr, lambda, bsdfPDF, sampledLight->p);
+                    camera.GetFilm().UpdateProbsMIS(pPixel, f * Li * Tr, lambda, bsdfPDF, lightPDF);
                     // std::cout << "[BSDF Sampling] bsdfPDF: " << bsdfPDF << std::endl;
                     // std::cout << "[BSDF Sampling] lightPDF: " << lightPDF << std::endl;
                     // std::cout << "LightProb: " << sampledLight->p << std::endl;
@@ -545,6 +544,10 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
         CHECK_GE(beta.y(lambda), 0.f);
         DCHECK(!IsInf(beta.y(lambda)));
     }
+
+    // [MIS] increment number of samples
+    camera.GetFilm().UpdateNSamplesMIS(pPixel);
+
     return L;
 }
 

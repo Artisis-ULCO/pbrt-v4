@@ -316,7 +316,6 @@ class RGBFilm : public FilmBase {
         
         Pixel &pixel = pixels[p];
 
-        // unused now
         pixel.nsamples += 1;
     }
 
