@@ -352,6 +352,10 @@ class RGBFilm : public FilmBase {
         pixel.pdfBsdf2 += gpdf;
 
         pixel.nsamplesBSDF += 1;
+
+        // need to compute sum for \mu (BSDF)
+        Float alpha = pixel.nsamplesBSDF / (pixel.nsamplesBSDF + pixel.nsamplesLight);
+        pixel.sumMuBSDF += luminance / (alpha * fpdf + (1 - alpha) * gpdf);
     }
 
     PBRT_CPU_GPU
@@ -363,6 +367,10 @@ class RGBFilm : public FilmBase {
         pixel.pdfLight2 += gpdf;
 
         pixel.nsamplesLight += 1;
+        
+        // need to compute sum for \mu (Light)
+        Float alpha = pixel.nsamplesLight / (pixel.nsamplesLight + pixel.nsamplesBSDF);
+        pixel.sumMuLight += luminance / (alpha * fpdf + (1 - alpha) * gpdf);
     }
 
     PBRT_CPU_GPU
@@ -376,21 +384,37 @@ class RGBFilm : public FilmBase {
         if ((pixel.nsamples % pixel.samplesBatch) != 0)
             return;
 
-        // TODO: compute alpha
+        // Compute alpha
         // p1 is Light
         // p2 is BSDF
-        double nominateur = pixel.pdfBsdf2 * pixel.LSumLight - pixel.pdfBsdf1 * pixel.LSumBSDF;
-        double denominateur = pixel.pdfLight1 * pixel.LSumBSDF - pixel.pdfBsdf1 * pixel.LSumBSDF
-                        - pixel.pdfLight2 * pixel.LSumLight + pixel.pdfBsdf2 * pixel.LSumLight;
-
-        pixel.alphaMIS = nominateur / (denominateur  + std::numeric_limits<Float>::epsilon());
+        double n1 = pixel.nsamplesLight;
+        double n2 = pixel.nsamplesBSDF;
+        double eps = std::numeric_limits<Float>::epsilon();
 
         // std::cout << p << " at sample " << pixel.nsamples << std::endl;
-        // std::cout << " -- Nominateur: " << nominateur << std::endl;
-        // std::cout << " -- Dénominateur: " << denominateur << std::endl;
+        // std::cout << " -- N1 (light): " << n1 << std::endl;
+        // std::cout << " -- N2 (BSDF): " << n2 << std::endl;
+        // std::cout << " -- \\mu (light): " << pixel.sumMuLight << std::endl;
+        // std::cout << " -- \\mu (BSDF): " << pixel.sumMuBSDF << std::endl;
+
+        double commonDen = n2 * pixel.pdfLight1 - n2 * pixel.pdfBsdf1 - n1 * pixel.pdfLight2 
+                        + n1 * pixel.pdfBsdf2;
+
+        double mu = (pixel.sumMuBSDF + pixel.sumMuLight) 
+                / (pixel.nsamplesBSDF + pixel.nsamplesLight + eps);
+
+        
+        // std::cout << " -- \\mu: " << mu << std::endl;
+        // std::cout << " -- \\den: " << commonDen << std::endl;
+
+        double firstTerm = (n2 * pixel.LSumLight - n1 * pixel.LSumBSDF) 
+                / (mu * commonDen + eps);
+
+        double secondTerm = (n1 * pixel.pdfBsdf2 + n2 * pixel.pdfBsdf1) / (commonDen + eps);
+
+        pixel.alphaMIS = firstTerm - secondTerm;
+
         // std::cout << " -- alpha: " << pixel.alphaMIS << std::endl;
-        // reset for next Pixel::batchSamples (number of generated paths)
-        // pixel.reset();
 
         if (pixel.alphaMIS <= 0) 
             pixel.alphaMIS = std::numeric_limits<Float>::epsilon();
@@ -447,6 +471,8 @@ class RGBFilm : public FilmBase {
         int nsamples = 0;
         int nsamplesLight = 0;
         int nsamplesBSDF = 0;
+        double sumMuLight = 0;
+        double sumMuBSDF = 0;
 
         double rgbSum[3] = {0., 0., 0.};
         double weightSum = 0.;
