@@ -325,11 +325,7 @@ class RGBFilm : public FilmBase {
         
         Pixel &pixel = pixels[p];
 
-        // if (p.x == 122 && p.y == 122)
-        //     std::cout << "Data for pixel " << p << " at samples " << pixel.nsamples << std::endl;
-        // else
-        //     return;
-
+        // std::cout << p << " at sample " << pixel.nsamples << std::endl;
         // std::cout << "bsdfPDF: " << fpdf << std::endl;
         // std::cout << "lightPDF: " << gpdf << std::endl;
 
@@ -399,7 +395,7 @@ class RGBFilm : public FilmBase {
 
         // [MIS]: update xi and xi' with respect to equation 32
         pixel.alphaMIS = pixel.alphaMIS - (xiAlpha / xiPrimeAlpha);
-        // std::cout << p << ":: computed alpha: " << pixel.alphaMIS << std::endl;
+        // std::cout << p << " [spp : " << pixel.nsamples << " ]:: computed alpha: " << pixel.alphaMIS << std::endl;
 
         // reset for next Pixel::batchSamples (number of generated paths)
         pixel.reset();
@@ -409,6 +405,9 @@ class RGBFilm : public FilmBase {
 
         if (pixel.alphaMIS >= 1) 
             pixel.alphaMIS = 1. - std::numeric_limits<Float>::epsilon();
+
+        // std::cout << " -- Real new Alpha MIS: " << pixel.alphaMIS << std::endl;
+
     }
 
     RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
