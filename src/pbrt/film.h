@@ -350,6 +350,8 @@ class RGBFilm : public FilmBase {
         pixel.LSumBSDF += luminance;
         pixel.pdfBsdf1 += fpdf;
         pixel.pdfBsdf2 += gpdf;
+
+        pixel.nsamplesBSDF += 1;
     }
 
     PBRT_CPU_GPU
@@ -359,6 +361,8 @@ class RGBFilm : public FilmBase {
         pixel.LSumLight += luminance;
         pixel.pdfLight1 += fpdf;
         pixel.pdfLight2 += gpdf;
+
+        pixel.nsamplesLight += 1;
     }
 
     PBRT_CPU_GPU
@@ -441,6 +445,8 @@ class RGBFilm : public FilmBase {
         // int nsamplesFpdf = 0;
         // int nsamplesGpdf = 0;
         int nsamples = 0;
+        int nsamplesLight = 0;
+        int nsamplesBSDF = 0;
 
         double rgbSum[3] = {0., 0., 0.};
         double weightSum = 0.;
