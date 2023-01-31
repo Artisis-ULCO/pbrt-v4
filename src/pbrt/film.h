@@ -379,9 +379,18 @@ class RGBFilm : public FilmBase {
         // TODO: compute alpha
         // p1 is Light
         // p2 is BSDF
-        double nominateur = pixel.pdfBsdf2 * pixel.LSumLight - pixel.pdfBsdf1 * pixel.LSumBSDF;
-        double denominateur = pixel.pdfLight1 * pixel.LSumBSDF - pixel.pdfBsdf1 * pixel.LSumBSDF
-                        - pixel.pdfLight2 * pixel.LSumLight + pixel.pdfBsdf2 * pixel.LSumLight;
+        double n1 = pixel.nsamplesLight;
+        double n2 = pixel.nsamplesBSDF;
+        double f1 = pixel.LSumLight;
+        double f2 = pixel.LSumBSDF;
+        
+        double p11 = pixel.pdfLight1;
+        double p12 = pixel.pdfLight2;
+        double p21 = pixel.pdfBsdf1;
+        double p22 = pixel.pdfBsdf2;
+
+        double nominateur = (n1 * f1 * p22) - (n2 * f2 * p21);
+        double denominateur = (n2 * f2 * p11) - (n1 * f1 * p12) - (n2 * f2 * p21) + (n1 * f1 * p22);
 
         pixel.alphaMIS = nominateur / (denominateur  + std::numeric_limits<Float>::epsilon());
 
