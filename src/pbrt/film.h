@@ -395,8 +395,8 @@ class RGBFilm : public FilmBase {
         pixel.alphaMIS = nominator / (denominator  + std::numeric_limits<Float>::epsilon());
 
         // std::cout << p << " at sample " << pixel.nsamples << std::endl;
-        // std::cout << " -- Nominateur: " << nominateur << std::endl;
-        // std::cout << " -- Dénominateur: " << denominateur << std::endl;
+        // std::cout << " -- Nominateur: " << nominator << std::endl;
+        // std::cout << " -- Dénominateur: " << denominator << std::endl;
         // std::cout << " -- alpha: " << pixel.alphaMIS << std::endl;
         // reset for next Pixel::batchSamples (number of generated paths)
         // pixel.reset();
