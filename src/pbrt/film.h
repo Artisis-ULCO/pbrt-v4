@@ -389,10 +389,10 @@ class RGBFilm : public FilmBase {
         double p21 = pixel.pdfBsdf1;
         double p22 = pixel.pdfBsdf2;
 
-        double nominateur = (n1 * f1 * p22) - (n2 * f2 * p21);
-        double denominateur = (n2 * f2 * p11) - (n1 * f1 * p12) - (n2 * f2 * p21) + (n1 * f1 * p22);
+        double nominator = (n1 * f1 * p22) - (n2 * f2 * p21);
+        double denominator = (n2 * f2 * p11) - (n1 * f1 * p12) - (n2 * f2 * p21) + (n1 * f1 * p22);
 
-        pixel.alphaMIS = nominateur / (denominateur  + std::numeric_limits<Float>::epsilon());
+        pixel.alphaMIS = nominator / (denominator  + std::numeric_limits<Float>::epsilon());
 
         // std::cout << p << " at sample " << pixel.nsamples << std::endl;
         // std::cout << " -- Nominateur: " << nominateur << std::endl;
