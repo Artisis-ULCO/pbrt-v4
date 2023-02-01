@@ -377,8 +377,8 @@ class RGBFilm : public FilmBase {
             return;
 
         // TODO: compute alpha
-        // p1 is Light
-        // p2 is BSDF
+        // p1 is BSDF
+        // p2 is Light
         double n1 = pixel.nsamplesLight;
         double n2 = pixel.nsamplesBSDF;
         double f1 = pixel.LSumLight;
