@@ -348,8 +348,8 @@ class RGBFilm : public FilmBase {
         Pixel &pixel = pixels[p];
 
         pixel.LSumBSDF += luminance;
-        pixel.pdfBsdf1 += fpdf;
-        pixel.pdfBsdf2 += gpdf;
+        pixel.pdfBsdf1 += fpdf; // bsdf pdf
+        pixel.pdfBsdf2 += gpdf; // light pdf
 
         pixel.nsamplesBSDF += 1;
     }
@@ -359,8 +359,8 @@ class RGBFilm : public FilmBase {
         Pixel &pixel = pixels[p];
 
         pixel.LSumLight += luminance;
-        pixel.pdfLight1 += fpdf;
-        pixel.pdfLight2 += gpdf;
+        pixel.pdfLight1 += fpdf; // bsdf pdf
+        pixel.pdfLight2 += gpdf; // light pdf
 
         pixel.nsamplesLight += 1;
     }
@@ -379,11 +379,18 @@ class RGBFilm : public FilmBase {
         // TODO: compute alpha
         // p1 is Light
         // p2 is BSDF
-        double nominateur = pixel.pdfBsdf2 * pixel.LSumLight - pixel.pdfBsdf1 * pixel.LSumBSDF;
-        double denominateur = pixel.pdfLight1 * pixel.LSumBSDF - pixel.pdfBsdf1 * pixel.LSumBSDF
-                        - pixel.pdfLight2 * pixel.LSumLight + pixel.pdfBsdf2 * pixel.LSumLight;
+        double f1 = pixel.LSumLight;
+        double f2 = pixel.LSumBSDF;
+        
+        double p11 = pixel.pdfLight1;
+        double p12 = pixel.pdfLight2;
+        double p21 = pixel.pdfBsdf1;
+        double p22 = pixel.pdfBsdf2;
 
-        pixel.alphaMIS = nominateur / (denominateur  + std::numeric_limits<Float>::epsilon());
+        double nominator = p21 * f2 - p22 * f1;
+        double denominator = p12 * f1 - p22 * f1 - p11 * f2 + p21 * f2;
+
+        pixel.alphaMIS = nominator / (denominator  + std::numeric_limits<Float>::epsilon());
 
         // std::cout << p << " at sample " << pixel.nsamples << std::endl;
         // std::cout << " -- Nominateur: " << nominateur << std::endl;

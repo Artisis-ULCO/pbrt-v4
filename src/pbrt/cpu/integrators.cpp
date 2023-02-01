@@ -452,16 +452,17 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
 
                     // use of MIS for light sampling
                     // Need to get PDF if sampling using BSDF in same direction
-                    Float lightPDF = ls->pdf;
+                    Float lightPDF = ls->pdf * sampledLight->p;
                     Float bsdfPDF = bsdf.PDF(wo, wi);
 
                     Float w_l = BalanceHeuristicDivergence(1 - alphaMIS, lightPDF, bsdfPDF);
 
                     if (f && Unoccluded(isect, ls->pLight)) {
-                        L += w_l * beta * f * ls->L / (sampledLight->p * ls->pdf);
+    
+                        L += w_l * beta * f * ls->L / (lightPDF);
 
                         Float luminance = camera.GetFilm().GetLuminance(pPixel, beta * f * ls->L, lambda);
-                        camera.GetFilm().UpdateLightSampling(pPixel, luminance, bsdfPDF, sampledLight->p);
+                        camera.GetFilm().UpdateLightSampling(pPixel, luminance, bsdfPDF, lightPDF);
                         // std::cout << "[Light Sampling] bsdfPDF: " << bsdfPDF << std::endl;
                         // std::cout << "[Light Sampling] lightPDF: " << lightPDF << std::endl;
                         // std::cout << "LightProb: " << sampledLight->p << std::endl;
@@ -501,17 +502,14 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                     Li = sampledLight->light.Le(ray, lambda);
 
                 // use of MIS and add contribution
-                Float lightPDF = sampledLight->light.PDF_Li(isect, wi);
-                // LightSampleContext prevIntrCtx = isect;
-                Float lightChoicePDF = lightSampler.PMF(isect, sampledLight->light);
-                Float w_b = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
+                Float lightPDF = sampledLight->light.PDF_Li(isect, wi) * sampledLight->p;
                 
                 if (!Li) {
                     Float w_b = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
                     L += f * Li * Tr * w_b / bsdfPDF;
 
                     Float luminance = camera.GetFilm().GetLuminance(pPixel, f * Li * Tr, lambda);
-                    camera.GetFilm().UpdateBSDFSampling(pPixel, luminance, bsdfPDF, lightChoicePDF);
+                    camera.GetFilm().UpdateBSDFSampling(pPixel, luminance, bsdfPDF, lightPDF);
                     
                     // std::cout << "[BSDF Sampling] bsdfPDF: " << bsdfPDF << std::endl;
                     // std::cout << "[BSDF Sampling] lightPDF: " << lightPDF << std::endl;
