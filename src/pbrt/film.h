@@ -348,14 +348,18 @@ class RGBFilm : public FilmBase {
         Pixel &pixel = pixels[p];
 
         pixel.LSumBSDF += luminance;
-        pixel.pdfBsdf1 += fpdf;
-        pixel.pdfBsdf2 += gpdf;
+        pixel.pdfBsdf1 += fpdf; // bsdf pdf
+        pixel.pdfBsdf2 += gpdf; // light pdf
 
         pixel.nsamplesBSDF += 1;
 
         // need to compute sum for \mu (BSDF)
-        Float alpha = pixel.nsamplesBSDF / (pixel.nsamplesBSDF + pixel.nsamplesLight);
-        pixel.sumMuBSDF += luminance / (alpha * fpdf + (1 - alpha) * gpdf);
+        // Float alpha = pixel.nsamplesBSDF / (double)(pixel.nsamplesBSDF + pixel.nsamplesLight);
+        // pixel.sumMuBSDF += luminance / (alpha * fpdf + (1 - alpha) * gpdf);
+
+        // check use of BalanceHeuristic or not
+        Float w_b = BalanceHeuristic(pixel.nsamplesBSDF, fpdf, pixel.nsamplesLight, gpdf);
+        pixel.sumMuBSDF += luminance * w_b;
     }
 
     PBRT_CPU_GPU
@@ -363,14 +367,23 @@ class RGBFilm : public FilmBase {
         Pixel &pixel = pixels[p];
 
         pixel.LSumLight += luminance;
-        pixel.pdfLight1 += fpdf;
-        pixel.pdfLight2 += gpdf;
+        pixel.pdfLight1 += fpdf; // bsdf pdf
+        pixel.pdfLight2 += gpdf; // light pdf
 
         pixel.nsamplesLight += 1;
         
         // need to compute sum for \mu (Light)
-        Float alpha = pixel.nsamplesLight / (pixel.nsamplesLight + pixel.nsamplesBSDF);
-        pixel.sumMuLight += luminance / (alpha * fpdf + (1 - alpha) * gpdf);
+        // Float alpha = pixel.nsamplesLight / (double)(pixel.nsamplesLight + pixel.nsamplesBSDF);
+
+        // std::cout << p << " at sample " << pixel.nsamples << std::endl;
+        // std::cout << "alpha: {" << alpha1 << ", " << alpha2 << "}" << std::endl;
+        // std::cout << "Light: " << pixel.nsamplesLight << ", BSDF: " << pixel.nsamplesBSDF << std::endl;
+
+        // pixel.sumMuLight += luminance / (alpha * fpdf + (1 - alpha) * gpdf);
+
+        // check use of BalanceHeuristic or not
+        Float w_l = BalanceHeuristic(pixel.nsamplesLight, gpdf, pixel.nsamplesBSDF, fpdf);
+        pixel.sumMuLight += luminance * w_l;
     }
 
     PBRT_CPU_GPU
@@ -385,10 +398,17 @@ class RGBFilm : public FilmBase {
             return;
 
         // Compute alpha
-        // p1 is Light
-        // p2 is BSDF
+        // p1 is BSDF
+        // p2 is Light
         double n1 = pixel.nsamplesLight;
         double n2 = pixel.nsamplesBSDF;
+        double f1 = pixel.LSumLight;
+        double f2 = pixel.LSumBSDF;
+        
+        double p11 = pixel.pdfLight1;
+        double p12 = pixel.pdfLight2;
+        double p21 = pixel.pdfBsdf1;
+        double p22 = pixel.pdfBsdf2;
         double eps = std::numeric_limits<Float>::epsilon();
 
         // std::cout << p << " at sample " << pixel.nsamples << std::endl;
@@ -397,20 +417,14 @@ class RGBFilm : public FilmBase {
         // std::cout << " -- \\mu (light): " << pixel.sumMuLight << std::endl;
         // std::cout << " -- \\mu (BSDF): " << pixel.sumMuBSDF << std::endl;
 
-        double commonDen = n2 * pixel.pdfLight1 - n2 * pixel.pdfBsdf1 - n1 * pixel.pdfLight2 
-                        + n1 * pixel.pdfBsdf2;
+        double commonDen = n2 * p11 - n2 * p21 - n1 * p12 + n1 * p22;
+        double mu = (pixel.sumMuLight + pixel.sumMuBSDF) / (double)(pixel.nsamples + eps);
 
-        double mu = (pixel.sumMuBSDF + pixel.sumMuLight) 
-                / (pixel.nsamplesBSDF + pixel.nsamplesLight + eps);
-
-        
         // std::cout << " -- \\mu: " << mu << std::endl;
         // std::cout << " -- \\den: " << commonDen << std::endl;
 
-        double firstTerm = (n2 * pixel.LSumLight - n1 * pixel.LSumBSDF) 
-                / (mu * commonDen + eps);
-
-        double secondTerm = (n1 * pixel.pdfBsdf2 + n2 * pixel.pdfBsdf1) / (commonDen + eps);
+        double firstTerm = (n2 * f1 - n1 * f2) / (mu * commonDen + eps);
+        double secondTerm = (n2 * p21 + n1 * p22) / (commonDen + eps);
 
         pixel.alphaMIS = firstTerm - secondTerm;
 
