@@ -40,6 +40,7 @@
 #include <pbrt/util/stats.h>
 #include <pbrt/util/string.h>
 #include <iostream>
+#include <fstream>
 
 #include <algorithm>
 
@@ -395,8 +396,17 @@ SimplePathIntegrator::SimplePathIntegrator(int maxDepth, bool sampleLights,
 SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                          Sampler sampler, ScratchBuffer &scratchBuffer,
                                          VisibleSurface *) const {
-        // use of MIS                                    
+    // use of MIS                                    
     Float alphaMIS = camera.GetFilm().GetMISAlpha(pPixel);
+
+    std::ofstream pixelData;
+    int xTarget = 351;
+    int yTarget = 194;
+
+    pixelData.open("data_pixel.csv", std::ios_base::app);
+
+    if (pPixel.x == xTarget and pPixel.y == yTarget)
+        pixelData << camera.GetFilm().GetNSamples(pPixel) << ";";
 
     // Estimate radiance along ray using simple path tracing
     SampledSpectrum L(0.f), beta(1.f);
@@ -412,6 +422,9 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
             if (!sampleLights || specularBounce)
                 for (const auto &light : infiniteLights)
                     L += beta * light.Le(ray, lambda);
+
+            if (pPixel.x == xTarget and pPixel.y == yTarget and depth == 0)
+                pixelData << ";;;;;;" << std::endl;
             break;
         }
 
@@ -429,6 +442,9 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
         if (!bsdf) {
             specularBounce = true;
             isect.SkipIntersection(&ray, si->tHit);
+
+            if (pPixel.x == xTarget and pPixel.y == yTarget)
+                pixelData << ";;;;;;" << std::endl;
             continue;
         }
 
@@ -455,6 +471,11 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                     Float lightPDF = ls->pdf * sampledLight->p;
                     Float bsdfPDF = bsdf.PDF(wo, wi);
 
+                    if (pPixel.x == xTarget and pPixel.y == yTarget) {
+                        Float luminance = camera.GetFilm().GetLuminance(pPixel, beta * f * ls->L, lambda);
+                        pixelData << luminance << ";" << lightPDF << ";" << bsdfPDF;
+                    }
+
                     Float w_l = BalanceHeuristicDivergence(1 - alphaMIS, lightPDF, bsdfPDF);
 
                     if (f && Unoccluded(isect, ls->pLight)) {
@@ -477,8 +498,11 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
             Float u = sampler.Get1D();
             pstd::optional<BSDFSample> bs = bsdf.Sample_f(wo, u, sampler.Get2D());
 
-            if (!bs)
+            if (!bs) {
+                if (pPixel.x == xTarget and pPixel.y == yTarget)
+                    pixelData << ";;;" << std::endl;
                 break;
+            }
 
             // use of MIS for BSDF sampling
             Vector3f wi = bs->wi;
@@ -504,6 +528,11 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                 // use of MIS and add contribution
                 Float lightPDF = sampledLight->light.PDF_Li(isect, wi) * sampledLight->p;
                 
+                if (pPixel.x == xTarget and pPixel.y == yTarget) {
+                    Float luminance = camera.GetFilm().GetLuminance(pPixel, f * Li * Tr, lambda);
+                    pixelData << ";" << luminance << ";" << lightPDF << ";" << bsdfPDF << std::endl;
+                }
+
                 if (!Li) {
                     Float w_b = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
                     L += f * Li * Tr * w_b / bsdfPDF;
@@ -516,6 +545,9 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                     // std::cout << "LightProb: " << sampledLight->p << std::endl;
                     // std::cout << "lightChoicePDF: " << lightChoicePDF << std::endl;
                 }
+            } else {
+                if (pPixel.x == xTarget and pPixel.y == yTarget)
+                    pixelData << ";;;" << std::endl;
             }
             
             beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
@@ -546,6 +578,8 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
         CHECK_GE(beta.y(lambda), 0.f);
         DCHECK(!IsInf(beta.y(lambda)));
     }
+    
+    pixelData.close();
 
     // [MIS] increment number of samples
     camera.GetFilm().UpdateNSamplesMIS(pPixel);

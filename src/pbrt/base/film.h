@@ -60,6 +60,9 @@ class Film : public TaggedPointer<RGBFilm, GBufferFilm, SpectralFilm> {
     Float GetMISAlpha(const Point2i p) const;
 
     PBRT_CPU_GPU
+    Float GetNSamples(const Point2i p) const;
+
+    PBRT_CPU_GPU
     void UpdateNSamplesMIS(Point2i p);
    
     // [MIS Divergence]: first version with 2 sampling method

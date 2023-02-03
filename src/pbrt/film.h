@@ -315,6 +315,11 @@ class RGBFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
+    Float GetNSamples(const Point2i p) const {
+        return pixels[p].nsamples;
+    }
+
+    PBRT_CPU_GPU
     void UpdateNSamplesMIS(Point2i p) {
 
         if (Options->alphaFixed)
@@ -524,6 +529,11 @@ class GBufferFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
+    Float GetNSamples(const Point2i p) const {
+        return 0;
+    }
+
+    PBRT_CPU_GPU
     Float GetLuminance(const Point2i p, SampledSpectrum L, const SampledWavelengths &lambda) {
         return 0.;
     }
@@ -638,6 +648,12 @@ class SpectralFilm : public FilmBase {
     Float GetMISAlpha(const Point2i p) const {
         return 0.5;
     }
+
+    PBRT_CPU_GPU
+    Float GetNSamples(const Point2i p) const {
+        return 0;
+    }
+
 
     PBRT_CPU_GPU
     void UpdateNSamplesMIS(Point2i p) {}
@@ -784,6 +800,12 @@ inline RGB Film::ToOutputRGB(SampledSpectrum L, const SampledWavelengths &lambda
 PBRT_CPU_GPU
 inline Float Film::GetMISAlpha(const Point2i p) const {
     auto get = [&](auto ptr) { return ptr->GetMISAlpha(p); };
+    return Dispatch(get);
+}
+
+PBRT_CPU_GPU
+inline Float Film::GetNSamples(const Point2i p) const {
+    auto get = [&](auto ptr) { return ptr->GetNSamples(p); };
     return Dispatch(get);
 }
 
