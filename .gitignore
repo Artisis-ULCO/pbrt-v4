@@ -9,4 +9,5 @@ build/
 .vscode
 build-*
 MIS/figures
+__pycache__
 results
