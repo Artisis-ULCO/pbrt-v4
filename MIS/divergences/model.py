@@ -2,10 +2,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 import numpy as np
+import sys
 
 from .heuristic import Heuristic
 
-class MIS(ABC):
+class MultipleImportanceSampling(ABC):
 
     def __init__(self, to_integrate: Callable[[float], float], 
                 samplings: list[Callable[[float], float]], 
@@ -18,7 +19,8 @@ class MIS(ABC):
         self._samplings = samplings
         self._pdfs = pdfs
         self._batch_variance = batch_variance
-        self._track_samples = 0
+        self._batch_samples = 0
+        self._total_samples = 0
         self._nsampling = len(self._samplings)
         
         if self._nsampling != len(self._pdfs):
@@ -39,7 +41,7 @@ class MIS(ABC):
         return self._alphas
     
     @abstractmethod
-    def _update_alphas(self) -> None:
+    def _update_alphas(self, batch_samples: int) -> None:
         pass
     
     @abstractmethod
@@ -79,8 +81,8 @@ class MIS(ABC):
         """
         
         return sum(
-            self._alphas[m] * ((self._sigma_prime[m] / self._track_samples) 
-            - ((self._mu_prime[m] / self._track_samples) ** 2))
+            self._alphas[m] * ((self._sigma_prime[m] / self._batch_samples) 
+            - ((self._mu_prime[m] / self._batch_samples) ** 2))
             for m in range(self._nsampling)
         )
     
@@ -94,7 +96,8 @@ class MIS(ABC):
     def _sample(self) -> float:
         
         # increment the number of computed samples
-        self._track_samples += 1
+        self._batch_samples += 1
+        self._total_samples += 1
         
         # start computing the sample using MIS
         f_sum = 0
@@ -121,35 +124,119 @@ class MIS(ABC):
         return f_sum
         
     
-    def fit(self, iterations: int, batch: int=1) -> float:
+    def fit(self, samples: int, batch: int=1) -> float:
         
         # TODO: improve this part
-        batch_ends = list(np.arange(0, iterations, batch))
+        batch_ends = list(np.arange(0, samples, batch))
         
         for b in batch_ends:
             
             # restore the number of computed samples to 0
             if self._batch_variance:
-                self._track_samples = 0
+                self._batch_samples = 0
             
-            for _ in range(b, min(b + batch, iterations)):
+            end_batch = min(b + batch, samples)
+                
+            for _ in range(b, end_batch):
+                
+                # sample and update alphas if needed
+                self._update_alphas(batch)
                 self._sample()
                 
             # intermediate computation of variance
             self._prepare_variance() 
             
-            print(f'[{min(b + batch, iterations)} samples] variance: {self.variance:.4f}')
-            
-            self._update_alphas()
+            print(f'[{min(b + batch, samples)} samples] variance: {self.variance:.4f}')
         
         
-class MIS_Tsallis(MIS):    
+class BalanceImportance(MultipleImportanceSampling):    
 
     def __init__(self, to_integrate, samplings, pdfs, interval):
-        super(MIS_Tsallis, self).__init__(to_integrate, samplings, pdfs, interval)
+        super(BalanceImportance, self).__init__(to_integrate, samplings, pdfs, interval)
     
-    def _update_alphas(self) -> None:
+    def _update_alphas(self, batch_samples: int) -> None:
         pass
+        
+    def _compute_balance(self, alphas: list[float], pdfs: list[float]) -> float:
+        
+        return Heuristic.balance_divergence(alphas, pdfs)
+    
+    def _compute_weight(self, index: int, pdfs: list[float]) -> float:
+        
+        return Heuristic.divergence_balance_weight(index, self._alphas, pdfs)
+    
+
+
+class TsallisImportance(MultipleImportanceSampling):    
+
+    def __init__(self, to_integrate, samplings, pdfs, interval, gamma=1):
+        super(TsallisImportance, self).__init__(to_integrate, samplings, pdfs, interval)
+        
+        self._gamma = 1
+        
+        # TODO: specify for only 2 samplings method?
+        
+        # TODO: keep track of Tsallis data
+        self._xi_sum = 0
+        self._xi_prime_sum = 0
+    
+    def _update_alphas(self, batch_samples: int) -> None:
+        
+        # keep track of data if exists
+        if self._total_samples > 0 and self._total_samples % batch_samples != 0:
+            
+            for m in range(self._nsampling):
+                
+                sample = self._f_track[m][-1]
+                pdfs = self._pdf_track[m][-1] # last recorded pdfs
+                alpha_probs = Heuristic.balance_divergence(self._alphas, pdfs)
+                
+                self._xi_sum += (sample / (alpha_probs ** (self._gamma + 1))) \
+                    * (pdfs[0] - pdfs[1])
+                    
+                self._xi_prime_sum += (sample / (alpha_probs ** (self._gamma + 2))) \
+                    * ((pdfs[0] - pdfs[1]) ** 2)
+        
+        # if first batch, then adapt number of samples for each sampling technique
+        if self._total_samples < batch_samples:
+            
+            if batch_samples % self._nsampling != 0:
+                raise AssertionError("Number of samples cannot be equally dispatched when initialized method")
+            
+            # TODO : make this part generic for other methods?
+            # attach the correct alphas weights depending of number of samples
+            samples_method = [ batch_samples / self._nsampling ] * np.arange(0, self._nsampling)
+            
+            method_index = list(samples_method).index(list(
+                filter(lambda x: x <= self._total_samples, samples_method)
+            )[-1])
+            
+            self._alphas = [ 0.99 if method_index == i else 0.01 / self._nsampling \
+                for i in range(self._nsampling) ]
+            
+            
+        elif self._total_samples % batch_samples == 0:
+            # basic case of Tsallis method
+            print('Next update of alphas')
+            
+            xi_alpha = self._xi_sum / batch_samples
+            xi_prime_alpha = self._xi_prime_sum * \
+                (-self._gamma / batch_samples)
+                
+            if xi_prime_alpha <= 0:
+                xi_prime_alpha = sys.float_info.epsilon
+                
+            self._alphas[0] -= (xi_alpha / xi_prime_alpha)
+            
+            if self._alphas[0] <= 0:
+                self._alphas[0] = sys.float_info.epsilon
+            
+            if self._alphas[0] >= 1:
+                self._alphas[0] = 1 - sys.float_info.epsilon
+                
+            self._alphas[1] = 1 - self._alphas[0]
+            
+            print(self._alphas)
         
     def _compute_balance(self, alphas: list[float], pdfs: list[float]) -> float:
         
