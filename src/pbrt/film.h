@@ -352,6 +352,9 @@ class RGBFilm : public FilmBase {
         pixel.pdfBsdf2 += gpdf; // light pdf
 
         pixel.nsamplesBSDF += 1;
+
+        double meanBSDF = (pixel.LSumBSDF / pixel.nsamplesBSDF);
+        pixel.LSumSquaredBSDF += pow(luminance - meanBSDF, 2);
     }
 
     PBRT_CPU_GPU
@@ -363,6 +366,9 @@ class RGBFilm : public FilmBase {
         pixel.pdfLight2 += gpdf; // light pdf
 
         pixel.nsamplesLight += 1;
+
+        double meanLight = (pixel.LSumLight / pixel.nsamplesLight);
+        pixel.LSumSquaredLight += pow(luminance - meanLight, 2);
     }
 
     PBRT_CPU_GPU
@@ -398,12 +404,29 @@ class RGBFilm : public FilmBase {
         // std::cout << " -- alpha: " << pixel.alphaMIS << std::endl;
         // reset for next Pixel::batchSamples (number of generated paths)
         // pixel.reset();
+        double varBSDF = pixel.LSumSquaredBSDF / pixel.nsamplesBSDF;
+        double varLight = pixel.LSumSquaredLight / pixel.nsamplesLight;
 
-        if (pixel.alphaMIS <= 0) 
+        // std::cout << "BSDF:" << varBSDF << " vs. " << varLight << std::endl;
+
+        if (pixel.alphaMIS <= 0) {
             pixel.alphaMIS = std::numeric_limits<Float>::epsilon();
 
-        if (pixel.alphaMIS >= 1) 
+            // if alpha near 0 and BSDF has better variance, then switch to 1
+            if (varBSDF > varLight) {
+                pixel.alphaMIS = 1. - std::numeric_limits<Float>::epsilon();
+            }
+        }
+
+
+        if (pixel.alphaMIS >= 1) {
             pixel.alphaMIS = 1. - std::numeric_limits<Float>::epsilon();
+
+            // if alpha near 1 and Light has better variance, then switch to 0
+            if (varLight > varBSDF) {
+                pixel.alphaMIS = pixel.alphaMIS = std::numeric_limits<Float>::epsilon();
+            }
+        }
     }
 
     RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
@@ -445,6 +468,8 @@ class RGBFilm : public FilmBase {
         double alphaMIS = Options->alphaMIS;
         double LSumLight = 0;
         double LSumBSDF = 0;
+        double LSumSquaredLight = 0;
+        double LSumSquaredBSDF = 0;
         double pdfLight1 = 0;
         double pdfLight2 = 0;
         double pdfBsdf1 = 0;

@@ -395,8 +395,10 @@ SimplePathIntegrator::SimplePathIntegrator(int maxDepth, bool sampleLights,
 SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                          Sampler sampler, ScratchBuffer &scratchBuffer,
                                          VisibleSurface *) const {
-        // use of MIS                                    
+    // use of MIS                                    
     Float alphaMIS = camera.GetFilm().GetMISAlpha(pPixel);
+    // std::cout << "--------------------" << std::endl;
+    // std::cout << pPixel << std::endl;
 
     // Estimate radiance along ray using simple path tracing
     SampledSpectrum L(0.f), beta(1.f);
@@ -432,8 +434,6 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
             continue;
         }
 
-        // std::cout << "--------------------" << std::endl;
-
         // Sample direct illumination if _sampleLights_ is true
         Vector3f wo = -ray.d;
         pstd::optional<SampledLight> sampledLight = lightSampler.Sample(sampler.Get1D());
@@ -456,6 +456,7 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                     Float bsdfPDF = bsdf.PDF(wo, wi);
 
                     Float w_l = BalanceHeuristicDivergence(1 - alphaMIS, lightPDF, bsdfPDF);
+                    // std::cout << "Light weight is: " << w_l << std::endl;
 
                     if (f && Unoccluded(isect, ls->pLight)) {
     
@@ -506,6 +507,7 @@ SampledSpectrum SimplePathIntegrator::Li(const Point2i pPixel, RayDifferential r
                 
                 if (!Li) {
                     Float w_b = BalanceHeuristicDivergence(alphaMIS, bsdfPDF, lightPDF);
+                    // std::cout << "BSDF weight is: " << w_b << std::endl;
                     L += f * Li * Tr * w_b / bsdfPDF;
 
                     Float luminance = camera.GetFilm().GetLuminance(pPixel, f * Li * Tr, lambda);
