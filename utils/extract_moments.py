@@ -2,6 +2,7 @@ import os
 import argparse
 os.environ["OPENCV_IO_ENABLE_OPENEXR"]="1"
 import cv2
+import sys
 import numpy as np
 
 def extract_data(image: np.ndarray, tracked_values: dict):
@@ -105,8 +106,8 @@ def main():
                 + 6 * np.power(mean_image, 2) * onlineM2 \
                 + 3 * np.power(mean_image, 4)
             
-            onlineSkew = onlineM3 / np.power(onlineM2, 1.5)
-            onlineKurt = onlineM4 / np.power(onlineM2, 2)
+            onlineSkew = onlineM3 / (np.power(onlineM2, 1.5) + sys.float_info.epsilon)
+            onlineKurt = onlineM4 / (np.power(onlineM2, 2) + sys.float_info.epsilon)
             
             moments = {
                 'mean': mean_image,
@@ -123,6 +124,7 @@ def main():
                 
                 statistics_image_path = os.path.join(statistics_scene_path, f'{key}.exr')
                 cv2.imwrite(statistics_image_path, image)
-                
+          
+      
 if __name__ == "__main__":
     main()
