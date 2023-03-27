@@ -99,14 +99,14 @@ def main():
             mean_image = sum_image / n
 
             # moment 2: variance \sigma²
-            onlineM2 = squared_sum / n - np.power(mean_image, 2)
-            onlineM3 = (cubic_sum - 3 * mean_image * squared_sum) / n + 2 * np.power(mean_image, 3)
-            onlineM4 = (fourth_sum - 4 * mean_image * cubic_sum) / n \
+            onlineM2 = (squared_sum / n) - np.power(mean_image, 2)
+            onlineM3 = (cubic_sum / n) - 3 * mean_image * onlineM2 - np.power(mean_image, 3)
+            onlineM4 = (fourth_sum / n) - 4 * mean_image * (cubic_sum / n) \
                 + 6 * np.power(mean_image, 2) * onlineM2 \
                 + 3 * np.power(mean_image, 4)
             
-            onlineSkew = (onlineM3) / np.power(onlineM2, 1.5)
-            onlineKurt = (onlineM4) / np.power(onlineM2, 2)
+            onlineSkew = onlineM3 / np.power(onlineM2, 1.5)
+            onlineKurt = onlineM4 / np.power(onlineM2, 2)
             
             moments = {
                 'mean': mean_image,
