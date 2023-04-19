@@ -76,7 +76,7 @@ def main():
         stack_images = np.array(stack_images)
         
         h_size, w_size, _ = stack_images.shape[1:]
-        final_array = np.empty(stack_images.shape[1:])
+        final_array = np.empty(stack_images.shape[1:], dtype=np.float32)
         
         # apply winsor per pixel (in order to keep progress track)
         n_pixels = h_size * w_size
