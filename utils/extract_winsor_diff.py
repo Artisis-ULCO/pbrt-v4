@@ -93,7 +93,7 @@ def main():
         
         # plt.imshow(final_array)
         os.makedirs(output_folder, exist_ok=True)
-        cv2.imwrite(os.path.join(output_folder, f'{scene}_{moment}.exr'), final_array)
+        cv2.imwrite(os.path.join(output_folder, f'{scene}_{moment}_{spp}.exr'), final_array)
             
         
  
